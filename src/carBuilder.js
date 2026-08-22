@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 
 // Porsche Catalog with historical technical specifications and styling profiles
 export const PORSCHE_CATALOG = {
@@ -17,8 +19,8 @@ export const PORSCHE_CATALOG = {
     weight: '760 kg',
     layout: 'Rear-Engine, RWD',
     price: 0,
-    defaultColor: '#c0c0c8',
-    defaultWheelColor: '#d1d5db',
+    defaultColor: '#d4d4d8',
+    defaultWheelColor: '#f1f5f9',
     audioProfile: { basePitch: 45, revMulti: 5.5, maxFreq: 420, roughness: 0.8 },
   },
   carrera_rs: {
@@ -141,335 +143,31 @@ export const WHEEL_FINISHES = [
   { name: 'Guards Red Racing', hex: '#dc2626', metalness: 0.5, roughness: 0.35 },
 ]
 
-// Helpers for procedural modeling
-function createSharedMaterials() {
-  return {
-    tire: new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.92, metalness: 0.05 }),
-    tireTread: new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.98 }),
-    brakeDisc: new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.2, metalness: 0.9 }),
-    caliperRed: new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.6 }),
-    caliperYellow: new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.6 }),
-    chrome: new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.95, roughness: 0.08 }),
-    blackTrim: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8, metalness: 0.2 }),
-    carbonFiber: new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.4, metalness: 0.5 }),
-    glass: new THREE.MeshPhysicalMaterial({
-      color: 0x0f172a,
-      transparent: true,
-      opacity: 0.65,
-      roughness: 0.1,
-      metalness: 0.1,
-      transmission: 0.6,
-      ior: 1.5,
-    }),
-    interior: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85 }),
-    headlightGlass: new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.85,
-      roughness: 0.05,
-      metalness: 0.1,
-      transmission: 0.85,
-    }),
-    headlightReflector: new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      metalness: 0.95,
-      roughness: 0.05,
-      emissive: 0x000000,
-      emissiveIntensity: 0,
-    }),
-    taillightReflector: new THREE.MeshStandardMaterial({
-      color: 0xdc2626,
-      metalness: 0.4,
-      roughness: 0.2,
-      emissive: 0x7f1d1d,
-      emissiveIntensity: 0.6,
-    }),
-    amberIndicator: new THREE.MeshStandardMaterial({
-      color: 0xf59e0b,
-      metalness: 0.4,
-      roughness: 0.3,
-      emissive: 0x78350f,
-      emissiveIntensity: 0.4,
-    }),
+// 3D GLB Model Asset Manager with DRACO decompression
+const dracoLoader = new DRACOLoader()
+dracoLoader.setDecoderPath('/draco/gltf/')
+
+const gltfLoader = new GLTFLoader()
+gltfLoader.setDRACOLoader(dracoLoader)
+
+let cachedPorscheGLTF = null
+const gltfLoadCallbacks = []
+
+gltfLoader.load(
+  '/models/porsche-911.glb',
+  (gltf) => {
+    cachedPorscheGLTF = gltf
+    gltfLoadCallbacks.forEach((cb) => cb(gltf))
+    gltfLoadCallbacks.length = 0
+  },
+  undefined,
+  (err) => {
+    console.error('Error loading Porsche GLB:', err)
   }
-}
+)
 
 /**
- * Creates a detailed wheel assembly with rim, tire, vented brake disc, and caliper
- */
-function createWheelAssembly(wheelColorHex, rimStyle = 'fuchs', sharedMat) {
-  const wheelGroup = new THREE.Group()
-
-  // Outer Tire
-  const tireGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.38, 24)
-  const tire = new THREE.Mesh(tireGeo, sharedMat.tire)
-  tire.rotation.z = Math.PI / 2
-  tire.castShadow = true
-  tire.receiveShadow = true
-  wheelGroup.add(tire)
-
-  // Tire sidewall rim
-  const sidewallGeo = new THREE.TorusGeometry(0.38, 0.05, 12, 24)
-  const sidewall = new THREE.Mesh(sidewallGeo, sharedMat.tire)
-  sidewall.rotation.y = Math.PI / 2
-  wheelGroup.add(sidewall)
-
-  // Wheel Rim Material
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(wheelColorHex),
-    metalness: 0.85,
-    roughness: 0.2,
-  })
-
-  // Rim barrel
-  const rimBarrelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.39, 24, 1, true)
-  const rimBarrel = new THREE.Mesh(rimBarrelGeo, rimMat)
-  rimBarrel.rotation.z = Math.PI / 2
-  wheelGroup.add(rimBarrel)
-
-  // Center hub & spokes based on style
-  if (rimStyle === 'classic_cap') {
-    // 356 Chrome Hubcap
-    const capGeo = new THREE.SphereGeometry(0.24, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.45)
-    const cap = new THREE.Mesh(capGeo, sharedMat.chrome)
-    cap.rotation.z = -Math.PI / 2
-    cap.position.x = 0.18
-    wheelGroup.add(cap)
-  } else if (rimStyle === 'fuchs') {
-    // Iconic 5-leaf Fuchs cloverleaf
-    const centerGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.06, 16)
-    const center = new THREE.Mesh(centerGeo, sharedMat.blackTrim)
-    center.rotation.z = Math.PI / 2
-    center.position.x = 0.17
-    wheelGroup.add(center)
-
-    for (let i = 0; i < 5; i++) {
-      const spokeAngle = (i / 5) * Math.PI * 2
-      const spokeGeo = new THREE.BoxGeometry(0.04, 0.06, 0.22)
-      const spoke = new THREE.Mesh(spokeGeo, rimMat)
-      spoke.position.set(0.18, Math.cos(spokeAngle) * 0.16, Math.sin(spokeAngle) * 0.16)
-      spoke.rotation.x = -spokeAngle
-      wheelGroup.add(spoke)
-    }
-  } else if (rimStyle === 'bbs_mesh') {
-    // GT2 Racing Mesh
-    const centerCapGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.08, 12)
-    const centerCap = new THREE.Mesh(centerCapGeo, sharedMat.chrome)
-    centerCap.rotation.z = Math.PI / 2
-    centerCap.position.x = 0.18
-    wheelGroup.add(centerCap)
-
-    for (let i = 0; i < 10; i++) {
-      const spokeAngle = (i / 10) * Math.PI * 2
-      const spokeGeo = new THREE.BoxGeometry(0.02, 0.04, 0.25)
-      const spoke = new THREE.Mesh(spokeGeo, rimMat)
-      spoke.position.set(0.17, Math.cos(spokeAngle) * 0.15, Math.sin(spokeAngle) * 0.15)
-      spoke.rotation.x = -spokeAngle
-      wheelGroup.add(spoke)
-    }
-  } else {
-    // 5-Spoke Sport Rim (Turbo/GT3/GT1)
-    const centerCapGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.06, 16)
-    const centerCap = new THREE.Mesh(centerCapGeo, rimMat)
-    centerCap.rotation.z = Math.PI / 2
-    centerCap.position.x = 0.17
-    wheelGroup.add(centerCap)
-
-    for (let i = 0; i < 5; i++) {
-      const spokeAngle = (i / 5) * Math.PI * 2
-      const spokeGeo = new THREE.BoxGeometry(0.035, 0.07, 0.23)
-      const spoke = new THREE.Mesh(spokeGeo, rimMat)
-      spoke.position.set(0.17, Math.cos(spokeAngle) * 0.15, Math.sin(spokeAngle) * 0.15)
-      spoke.rotation.x = -spokeAngle
-      wheelGroup.add(spoke)
-    }
-  }
-
-  // Brake Disc inside wheel
-  const discGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.03, 18)
-  const disc = new THREE.Mesh(discGeo, sharedMat.brakeDisc)
-  disc.rotation.z = Math.PI / 2
-  disc.position.x = 0.06
-  wheelGroup.add(disc)
-
-  // Brake Caliper
-  const caliperGeo = new THREE.BoxGeometry(0.07, 0.14, 0.1)
-  const caliper = new THREE.Mesh(caliperGeo, rimStyle === 'fuchs' || rimStyle === 'classic_cap' ? sharedMat.caliperRed : sharedMat.caliperYellow)
-  caliper.position.set(0.06, 0.16, 0)
-  wheelGroup.add(caliper)
-
-  wheelGroup.userData.rimMaterial = rimMat
-  return wheelGroup
-}
-
-/**
- * Creates the cockpit silhouette: interior tub, dashboard, steering wheel, and sports bucket seats
- */
-function createCockpitInterior(sharedMat, isRaceCar = false) {
-  const cockpit = new THREE.Group()
-
-  // Floor / Tub
-  const tubGeo = new THREE.BoxGeometry(1.4, 0.35, 1.8)
-  const tub = new THREE.Mesh(tubGeo, sharedMat.interior)
-  tub.position.set(0, 0.45, 0.1)
-  cockpit.add(tub)
-
-  // Dashboard
-  const dashGeo = new THREE.BoxGeometry(1.35, 0.25, 0.45)
-  const dash = new THREE.Mesh(dashGeo, sharedMat.interior)
-  dash.position.set(0, 0.72, 0.8)
-  cockpit.add(dash)
-
-  // Steering Wheel
-  const wheelRimGeo = new THREE.TorusGeometry(0.15, 0.02, 8, 16)
-  const steeringWheel = new THREE.Mesh(wheelRimGeo, sharedMat.blackTrim)
-  steeringWheel.position.set(-0.35, 0.76, 0.55)
-  steeringWheel.rotation.x = Math.PI * 0.35
-  cockpit.add(steeringWheel)
-
-  // Driver & Passenger Sport Seats
-  const seatPositions = [-0.34, 0.34]
-  seatPositions.forEach((xPos) => {
-    const seatBottomGeo = new THREE.BoxGeometry(0.44, 0.16, 0.55)
-    const seatBottom = new THREE.Mesh(seatBottomGeo, sharedMat.interior)
-    seatBottom.position.set(xPos, 0.5, 0.05)
-    cockpit.add(seatBottom)
-
-    const seatBackGeo = new THREE.BoxGeometry(0.42, 0.62, 0.14)
-    const seatBack = new THREE.Mesh(seatBackGeo, sharedMat.interior)
-    seatBack.position.set(xPos, 0.82, -0.2)
-    seatBack.rotation.x = -Math.PI * 0.08
-    cockpit.add(seatBack)
-
-    const headrestGeo = new THREE.BoxGeometry(0.25, 0.2, 0.12)
-    const headrest = new THREE.Mesh(headrestGeo, sharedMat.interior)
-    headrest.position.set(xPos, 1.15, -0.27)
-    cockpit.add(headrest)
-  })
-
-  // Roll Cage for GT2 / GT3 / GT1
-  if (isRaceCar) {
-    const rollBarGeo = new THREE.CylinderGeometry(0.025, 0.025, 1.3, 8)
-    const rollBarTop = new THREE.Mesh(rollBarGeo, sharedMat.chrome)
-    rollBarTop.rotation.z = Math.PI / 2
-    rollBarTop.position.set(0, 1.25, -0.35)
-    cockpit.add(rollBarTop)
-
-    const barLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 8), sharedMat.chrome)
-    barLeft.position.set(-0.62, 0.85, -0.35)
-    cockpit.add(barLeft)
-
-    const barRight = barLeft.clone()
-    barRight.position.x = 0.62
-    cockpit.add(barRight)
-  }
-
-  return cockpit
-}
-
-/**
- * Creates headlamp assemblies with reflector, housing, and optional light sources
- */
-function createHeadlights(type = 'round', sharedMat) {
-  const group = new THREE.Group()
-
-  if (type === 'round') {
-    // Classic 356 / 911 / 930 round headlamps
-    const lampGeo = new THREE.CylinderGeometry(0.18, 0.16, 0.12, 18)
-    const glassCapGeo = new THREE.SphereGeometry(0.18, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.4)
-
-    const positions = [[-0.78, 0.82, 2.05], [0.78, 0.82, 2.05]]
-    positions.forEach(([x, y, z]) => {
-      const lampHousing = new THREE.Mesh(lampGeo, sharedMat.chrome)
-      lampHousing.rotation.x = Math.PI / 2 - 0.2
-      lampHousing.position.set(x, y, z)
-      group.add(lampHousing)
-
-      const lens = new THREE.Mesh(glassCapGeo, sharedMat.headlightReflector)
-      lens.rotation.x = Math.PI / 2 - 0.2
-      lens.position.set(x, y, z + 0.06)
-      group.add(lens)
-    })
-  } else if (type === 'teardrop') {
-    // 996 GT3 RS / GT1 Teardrop Headlamps
-    const shapeGeo = new THREE.BoxGeometry(0.38, 0.18, 0.45)
-    const positions = [[-0.74, 0.76, 2.0], [0.74, 0.76, 2.0]]
-    positions.forEach(([x, y, z]) => {
-      const lens = new THREE.Mesh(shapeGeo, sharedMat.headlightReflector)
-      lens.position.set(x, y, z)
-      lens.rotation.y = x > 0 ? -0.2 : 0.2
-      lens.rotation.x = -0.15
-      group.add(lens)
-    })
-  }
-
-  return group
-}
-
-/**
- * Creates rear taillight bar and exhaust tips
- */
-function createRearLightingAndExhaust(type = 'classic', sharedMat) {
-  const group = new THREE.Group()
-
-  if (type === '356') {
-    // Tiny dual beehive taillights
-    const lampGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.08, 12)
-    const leftLamp = new THREE.Mesh(lampGeo, sharedMat.taillightReflector)
-    leftLamp.rotation.x = Math.PI / 2
-    leftLamp.position.set(-0.6, 0.72, -2.1)
-    group.add(leftLamp)
-
-    const rightLamp = leftLamp.clone()
-    rightLamp.position.x = 0.6
-    group.add(rightLamp)
-
-    // Single chrome exhaust
-    const exhaustGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.2, 12)
-    const exhaust = new THREE.Mesh(exhaustGeo, sharedMat.chrome)
-    exhaust.rotation.x = Math.PI / 2
-    exhaust.position.set(-0.25, 0.28, -2.15)
-    group.add(exhaust)
-  } else if (type === 'lightbar') {
-    // Iconic 911 reflector center bar + taillights
-    const barGeo = new THREE.BoxGeometry(1.6, 0.12, 0.1)
-    const bar = new THREE.Mesh(barGeo, sharedMat.taillightReflector)
-    bar.position.set(0, 0.74, -2.2)
-    group.add(bar)
-
-    // Dual/Single exhaust
-    const exhaustGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.25, 12)
-    const exhaustLeft = new THREE.Mesh(exhaustGeo, sharedMat.chrome)
-    exhaustLeft.rotation.x = Math.PI / 2
-    exhaustLeft.position.set(-0.55, 0.32, -2.22)
-    group.add(exhaustLeft)
-
-    const exhaustRight = exhaustLeft.clone()
-    exhaustRight.position.x = 0.55
-    group.add(exhaustRight)
-  } else if (type === 'center_dual') {
-    // GT3 RS Center dual exhaust
-    const barGeo = new THREE.BoxGeometry(1.5, 0.14, 0.1)
-    const bar = new THREE.Mesh(barGeo, sharedMat.taillightReflector)
-    bar.position.set(0, 0.74, -2.2)
-    group.add(bar)
-
-    const exhaustGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.26, 12)
-    const ex1 = new THREE.Mesh(exhaustGeo, sharedMat.chrome)
-    ex1.rotation.x = Math.PI / 2
-    ex1.position.set(-0.09, 0.42, -2.25)
-    group.add(ex1)
-
-    const ex2 = ex1.clone()
-    ex2.position.x = 0.09
-    group.add(ex2)
-  }
-
-  return group
-}
-
-/**
- * Master Porsche Model Generator
+ * Builds authentic realistic 3D Porsche model from photorealistic GLTF assets
  */
 export function buildPorsche3DModel(carId, options = {}) {
   const carConfig = PORSCHE_CATALOG[carId] || PORSCHE_CATALOG.carrera_rs
@@ -479,424 +177,236 @@ export function buildPorsche3DModel(carId, options = {}) {
 
   const root = new THREE.Group()
   root.name = `Porsche_${carId}`
-  const sharedMat = createSharedMaterials()
 
-  // Primary High-Gloss Automotive Body Material
-  const bodyPaintMat = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(paintColorHex),
-    metalness: 0.65,
-    roughness: 0.28,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.1,
-    reflectivity: 0.9,
-  })
+  const bodyMaterials = []
+  const rimMaterials = []
+  const lightMaterials = []
 
-  // Accent / Stripe Material
-  const accentPaintMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(stripeColorHex),
-    metalness: 0.5,
-    roughness: 0.35,
-  })
+  const carbonMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.35, metalness: 0.6 })
+  const accentMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(stripeColorHex), roughness: 0.35, metalness: 0.5 })
 
-  let wheelStyle = 'fuchs'
-  let wheelPositions = [
-    [-1.02, 0.42, 1.45], // Front Left
-    [1.02, 0.42, 1.45],  // Front Right
-    [-1.04, 0.42, -1.35], // Rear Left
-    [1.04, 0.42, -1.35],  // Rear Right
-  ]
+  // Function to configure realistic GLB model
+  const applyGLTFModel = (gltf) => {
+    const carModel = gltf.scene.clone(true)
 
-  // Model-specific Bodywork Construction
-  switch (carId) {
-    case 'porsche_356': {
-      wheelStyle = 'classic_cap'
-      // Curvaceous classic body
-      const mainBodyGeo = new THREE.BoxGeometry(1.85, 0.58, 4.3)
-      const mainBody = new THREE.Mesh(mainBodyGeo, bodyPaintMat)
-      mainBody.position.y = 0.6
-      mainBody.castShadow = true
-      root.add(mainBody)
+    // Remove any oversized background planes or studio boxes from the original asset
+    const toRemove = []
+    carModel.traverse((node) => {
+      if (node.isMesh) {
+        const name = (node.name || '').toLowerCase()
+        if (
+          name.includes('plane.002') ||
+          name.includes('plane.003') ||
+          name.includes('cube.001') ||
+          name.includes('cube.002')
+        ) {
+          toRemove.push(node)
+        }
+      }
+    })
+    toRemove.forEach((node) => {
+      if (node.parent) {
+        node.parent.remove(node)
+      }
+    })
 
-      // Smooth Rounded Vintage Hood
-      const hoodGeo = new THREE.CylinderGeometry(0.88, 0.94, 1.8, 16)
-      const hood = new THREE.Mesh(hoodGeo, bodyPaintMat)
-      hood.rotation.z = Math.PI / 2
-      hood.rotation.y = Math.PI / 2
-      hood.position.set(0, 0.68, 1.1)
-      hood.scale.set(1.0, 0.55, 1.15)
-      root.add(hood)
+    // Create normalized container pivot
+    const container = new THREE.Group()
+    container.add(carModel)
 
-      // Sloping Rounded Rear Deck
-      const rearDeckGeo = new THREE.CylinderGeometry(0.75, 0.92, 1.7, 16)
-      const rearDeck = new THREE.Mesh(rearDeckGeo, bodyPaintMat)
-      rearDeck.rotation.z = Math.PI / 2
-      rearDeck.rotation.y = Math.PI / 2
-      rearDeck.position.set(0, 0.64, -1.1)
-      rearDeck.scale.set(1.0, 0.52, 1.1)
-      root.add(rearDeck)
+    carModel.updateMatrixWorld(true)
+    const bbox = new THREE.Box3().setFromObject(carModel)
+    const size = bbox.getSize(new THREE.Vector3())
+    const center = bbox.getCenter(new THREE.Vector3())
 
-      // Speedster Low Windscreen
-      const screenGeo = new THREE.CylinderGeometry(0.8, 0.85, 0.35, 16, 1, true, 0, Math.PI)
-      const screen = new THREE.Mesh(screenGeo, sharedMat.glass)
-      screen.rotation.x = -Math.PI * 0.4
-      screen.position.set(0, 0.95, 0.3)
-      root.add(screen)
+    // Target car length ~ 4.45 meters
+    const targetLength = 4.45
+    const maxDim = Math.max(size.x, size.y, size.z)
+    const scaleFactor = targetLength / maxDim
 
-      // Chrome Frame around screen
-      const frameGeo = new THREE.TorusGeometry(0.82, 0.025, 8, 16, Math.PI)
-      const frame = new THREE.Mesh(frameGeo, sharedMat.chrome)
-      frame.rotation.x = -Math.PI * 0.4
-      frame.position.set(0, 0.96, 0.3)
-      root.add(frame)
+    // Center carModel so center is at (0, 0, 0) and bottom is at Y = 0
+    carModel.position.x = -center.x
+    carModel.position.y = -bbox.min.y
+    carModel.position.z = -center.z
 
-      // Vintage Chrome Bumpers with Overriders
-      const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.12, 0.15), sharedMat.chrome)
-      frontBumper.position.set(0, 0.44, 2.22)
-      root.add(frontBumper)
+    container.scale.setScalar(scaleFactor)
 
-      const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.12, 0.15), sharedMat.chrome)
-      rearBumper.position.set(0, 0.46, -2.18)
-      root.add(rearBumper)
+    // Traverse and identify paint, glass, chrome, and wheel materials
+    carModel.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true
+        node.receiveShadow = true
 
-      root.add(createCockpitInterior(sharedMat, false))
-      root.add(createHeadlights('round', sharedMat))
-      root.add(createRearLightingAndExhaust('356', sharedMat))
-      break
-    }
+        if (node.material) {
+          const mat = node.material.clone()
+          node.material = mat
+          const matName = (mat.name || node.name || '').toLowerCase()
 
-    case 'carrera_rs': {
-      wheelStyle = 'fuchs'
-      // 911 Carrera RS Body
-      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.55, 4.45), bodyPaintMat)
-      lowerBody.position.y = 0.58
-      lowerBody.castShadow = true
-      root.add(lowerBody)
+          // Paint Material detection ('paint', 'coat')
+          if (
+            matName.includes('paint') ||
+            matName.includes('coat') ||
+            matName.includes('body') ||
+            matName.includes('exterior') ||
+            matName.includes('car_paint')
+          ) {
+            // Apply Clearcoat Physical Paint
+            mat.color = new THREE.Color(paintColorHex)
+            mat.metalness = 0.65
+            mat.roughness = 0.22
+            mat.clearcoat = 1.0
+            mat.clearcoatRoughness = 0.08
+            mat.needsUpdate = true
+            bodyMaterials.push(mat)
+          } else if (matName.includes('silver') || matName.includes('rim') || matName.includes('wheel')) {
+            mat.color = new THREE.Color(wheelColorHex)
+            mat.metalness = 0.85
+            mat.roughness = 0.25
+            mat.needsUpdate = true
+            rimMaterials.push(mat)
+          } else if (matName.includes('glass') || matName.includes('window')) {
+            mat.transparent = true
+            mat.opacity = 0.65
+            mat.roughness = 0.05
+            mat.transmission = 0.6
+            mat.needsUpdate = true
+          } else if (matName.includes('lights')) {
+            mat.emissive = new THREE.Color(0x000000)
+            mat.emissiveIntensity = 0
+            mat.needsUpdate = true
+            lightMaterials.push(mat)
+          }
+        }
+      }
+    })
 
-      // Front Sloping Hood
-      const hoodGeo = new THREE.BoxGeometry(1.68, 0.38, 1.85)
-      const hood = new THREE.Mesh(hoodGeo, bodyPaintMat)
-      hood.position.set(0, 0.74, 1.15)
-      hood.rotation.x = 0.1
-      root.add(hood)
+    // Model-Specific Spoilers & Wings
+    if (carId === 'carrera_rs') {
+      // 1973 Carrera RS Ducktail Spoiler
+      const ducktailShape = new THREE.Shape()
+      ducktailShape.moveTo(0, 0)
+      ducktailShape.lineTo(0.36, 0)
+      ducktailShape.quadraticCurveTo(0.4, 0.16, 0.22, 0.28)
+      ducktailShape.lineTo(0, 0.1)
+      ducktailShape.closePath()
 
-      // Fastback Cabin Greenhouse
-      const cabinGeo = new THREE.BoxGeometry(1.5, 0.65, 2.05)
-      const cabin = new THREE.Mesh(cabinGeo, sharedMat.glass)
-      cabin.position.set(0, 1.16, -0.15)
-      cabin.rotation.x = -0.05
-      root.add(cabin)
-
-      // Roof Skin
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 1.45), bodyPaintMat)
-      roof.position.set(0, 1.48, -0.12)
-      root.add(roof)
-
-      // Flared Rear Hips
-      const rearHipLeft = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.44, 1.4), bodyPaintMat)
-      rearHipLeft.position.set(-0.95, 0.65, -1.1)
-      root.add(rearHipLeft)
-      const rearHipRight = rearHipLeft.clone()
-      rearHipRight.position.x = 0.95
-      root.add(rearHipRight)
-
-      // Iconic Ducktail Rear Spoiler
-      const ducktailGeo = new THREE.BoxGeometry(1.42, 0.22, 0.45)
-      const ducktail = new THREE.Mesh(ducktailGeo, bodyPaintMat)
-      ducktail.position.set(0, 0.95, -1.82)
-      ducktail.rotation.x = 0.42
+      const ducktailGeo = new THREE.ExtrudeGeometry(ducktailShape, { depth: 1.18, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 3 })
+      ducktailGeo.center()
+      const ducktailMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(paintColorHex), metalness: 0.65, roughness: 0.22, clearcoat: 1.0 })
+      const ducktail = new THREE.Mesh(ducktailGeo, ducktailMat)
+      ducktail.rotation.y = Math.PI / 2
+      ducktail.position.set(0, 1.02, -1.82)
       ducktail.castShadow = true
       root.add(ducktail)
+      bodyMaterials.push(ducktailMat)
 
-      // Carrera RS Side Stripes
-      const stripeLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 2.4), accentPaintMat)
-      stripeLeft.position.set(-0.99, 0.48, 0.0)
-      root.add(stripeLeft)
-      const stripeRight = stripeLeft.clone()
-      stripeRight.position.x = 0.99
-      root.add(stripeRight)
-
-      root.add(createCockpitInterior(sharedMat, false))
-      root.add(createHeadlights('round', sharedMat))
-      root.add(createRearLightingAndExhaust('lightbar', sharedMat))
-      break
-    }
-
-    case 'turbo_930': {
-      wheelStyle = '5spoke'
-      wheelPositions[2][0] = -1.14 // Wider rear track
-      wheelPositions[3][0] = 1.14
-
-      // 930 Widebody
-      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.58, 4.45), bodyPaintMat)
-      lowerBody.position.y = 0.58
-      lowerBody.castShadow = true
-      root.add(lowerBody)
-
-      // Front Chin Spoiler
-      const chinSpoiler = new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.14, 0.35), sharedMat.blackTrim)
-      chinSpoiler.position.set(0, 0.36, 2.18)
-      root.add(chinSpoiler)
-
-      // Massive Turbo Rear Flares (Turbo Hips)
-      const turboFlareLeft = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.48, 1.5), bodyPaintMat)
-      turboFlareLeft.position.set(-1.06, 0.64, -1.12)
-      root.add(turboFlareLeft)
-      const turboFlareRight = turboFlareLeft.clone()
-      turboFlareRight.position.x = 1.06
-      root.add(turboFlareRight)
-
-      // Cabin & Roof
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.65, 2.05), sharedMat.glass)
-      cabin.position.set(0, 1.16, -0.15)
-      root.add(cabin)
-
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 1.45), bodyPaintMat)
-      roof.position.set(0, 1.48, -0.12)
-      root.add(roof)
-
-      // Iconic "Whale Tail" / "Tea Tray" Intercooler Wing
-      const whaleTailBase = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.16, 0.68), bodyPaintMat)
-      whaleTailBase.position.set(0, 0.98, -1.82)
-      whaleTailBase.rotation.x = 0.18
+      // RS Side Script Decals
+      ;[-0.92, 0.92].forEach((xPos) => {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 2.2), accentMat)
+        stripe.position.set(xPos, 0.44, 0.0)
+        root.add(stripe)
+      })
+    } else if (carId === 'turbo_930') {
+      // 1978 930 Whale Tail / Tea Tray Spoiler
+      const whaleTailMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(paintColorHex), metalness: 0.65, roughness: 0.22, clearcoat: 1.0 })
+      const whaleTailBase = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.12, 0.65), whaleTailMat)
+      whaleTailBase.position.set(0, 1.02, -1.85)
+      whaleTailBase.rotation.x = 0.16
+      whaleTailBase.castShadow = true
       root.add(whaleTailBase)
+      bodyMaterials.push(whaleTailMat)
 
-      const whaleTailRubberLip = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.1, 0.14), sharedMat.blackTrim)
-      whaleTailRubberLip.position.set(0, 1.06, -2.12)
-      root.add(whaleTailRubberLip)
-
-      root.add(createCockpitInterior(sharedMat, false))
-      root.add(createHeadlights('round', sharedMat))
-      root.add(createRearLightingAndExhaust('lightbar', sharedMat))
-      break
-    }
-
-    case 'gt2_993': {
-      wheelStyle = 'bbs_mesh'
-      wheelPositions[0][0] = -1.12
-      wheelPositions[1][0] = 1.12
-      wheelPositions[2][0] = -1.18
-      wheelPositions[3][0] = 1.18
-
-      // 993 GT2 Widebody with Riveted Bolt-on Arches
-      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.58, 4.45), bodyPaintMat)
-      lowerBody.position.y = 0.58
-      root.add(lowerBody)
-
-      // Bolt-on Riveted Arches (Front & Rear)
-      const boltArchGeo = new THREE.BoxGeometry(0.38, 0.46, 1.35)
-      const frontArchL = new THREE.Mesh(boltArchGeo, bodyPaintMat)
-      frontArchL.position.set(-1.05, 0.62, 1.4)
-      root.add(frontArchL)
-      const frontArchR = frontArchL.clone()
-      frontArchR.position.x = 1.05
-      root.add(frontArchR)
-
-      const rearArchL = new THREE.Mesh(boltArchGeo, bodyPaintMat)
-      rearArchL.position.set(-1.1, 0.64, -1.18)
-      root.add(rearArchL)
-      const rearArchR = rearArchL.clone()
-      rearArchR.position.x = 1.1
-      root.add(rearArchR)
-
-      // Front Racing Splitter
-      const splitter = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.08, 0.45), sharedMat.carbonFiber)
-      splitter.position.set(0, 0.32, 2.22)
-      root.add(splitter)
-
-      // Cabin & Roof
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.65, 2.05), sharedMat.glass)
-      cabin.position.set(0, 1.16, -0.15)
-      root.add(cabin)
-
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 1.45), bodyPaintMat)
-      roof.position.set(0, 1.48, -0.12)
-      root.add(roof)
-
-      // Bi-Plane Racing Wing with Air Scoops
-      const wingBase = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.18, 0.55), bodyPaintMat)
-      wingBase.position.set(0, 0.98, -1.78)
-      wingBase.rotation.x = 0.18
+      const rubberLip = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.08, 0.12), new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.85 }))
+      rubberLip.position.set(0, 1.11, -2.16)
+      root.add(rubberLip)
+    } else if (carId === 'gt2_993') {
+      // 1995 993 GT2 Bi-Plane Racing Wing
+      const wingBaseMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(paintColorHex), metalness: 0.65, roughness: 0.22, clearcoat: 1.0 })
+      const wingBase = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.16, 0.58), wingBaseMat)
+      wingBase.position.set(0, 1.05, -1.82)
+      wingBase.rotation.x = 0.15
       root.add(wingBase)
+      bodyMaterials.push(wingBaseMat)
 
-      const wingAirScoopL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.35), bodyPaintMat)
-      wingAirScoopL.position.set(-0.68, 1.14, -1.82)
-      root.add(wingAirScoopL)
-      const wingAirScoopR = wingAirScoopL.clone()
-      wingAirScoopR.position.x = 0.68
-      root.add(wingAirScoopR)
-
-      const topWing = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.08, 0.42), sharedMat.carbonFiber)
-      topWing.position.set(0, 1.34, -1.95)
+      const topWing = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.06, 0.42), carbonMat)
+      topWing.position.set(0, 1.38, -1.98)
       topWing.rotation.x = 0.12
+      topWing.castShadow = true
       root.add(topWing)
+    } else if (carId === 'gt3_996') {
+      // 2003 GT3 RS Carbon Racing Wing
+      ;[-0.48, 0.48].forEach((xPos) => {
+        const upright = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.38, 0.16), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.15 }))
+        upright.position.set(xPos, 1.12, -1.88)
+        root.add(upright)
+      })
 
-      root.add(createCockpitInterior(sharedMat, true))
-      root.add(createHeadlights('round', sharedMat))
-      root.add(createRearLightingAndExhaust('lightbar', sharedMat))
-      break
-    }
-
-    case 'gt3_996': {
-      wheelStyle = '5spoke'
-      // 996 GT3 RS Smooth Aero Body
-      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.56, 4.5), bodyPaintMat)
-      lowerBody.position.y = 0.56
-      root.add(lowerBody)
-
-      // Aerodynamic Front Bumper with Intakes
-      const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.45, 0.6), bodyPaintMat)
-      frontBumper.position.set(0, 0.54, 2.05)
-      root.add(frontBumper)
-
-      const frontIntake = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 0.1), sharedMat.blackTrim)
-      frontIntake.position.set(0, 0.42, 2.36)
-      root.add(frontIntake)
-
-      // Smooth Cabin & Roof
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.65, 2.1), sharedMat.glass)
-      cabin.position.set(0, 1.15, -0.1)
-      root.add(cabin)
-
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 1.48), bodyPaintMat)
-      roof.position.set(0, 1.47, -0.08)
-      root.add(roof)
-
-      // Carbon Fiber High GT Wing on Aluminum Uprights
-      const strutL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.35, 0.15), sharedMat.chrome)
-      strutL.position.set(-0.45, 1.05, -1.85)
-      root.add(strutL)
-      const strutR = strutL.clone()
-      strutR.position.x = 0.45
-      root.add(strutR)
-
-      const gtWing = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.06, 0.44), sharedMat.carbonFiber)
-      gtWing.position.set(0, 1.25, -1.9)
+      const gtWing = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.055, 0.44), carbonMat)
+      gtWing.position.set(0, 1.32, -1.92)
       gtWing.rotation.x = 0.14
       gtWing.castShadow = true
       root.add(gtWing)
 
-      // Endplates on GT Wing
-      const endplateL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.24, 0.48), accentPaintMat)
-      endplateL.position.set(-0.89, 1.25, -1.9)
-      root.add(endplateL)
-      const endplateR = endplateL.clone()
-      endplateR.position.x = 0.89
-      root.add(endplateR)
-
-      // GT3 RS Side Scripts
-      const scriptL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 2.2), accentPaintMat)
-      scriptL.position.set(-1.0, 0.46, 0.0)
-      root.add(scriptL)
-      const scriptR = scriptL.clone()
-      scriptR.position.x = 1.0
-      root.add(scriptR)
-
-      root.add(createCockpitInterior(sharedMat, true))
-      root.add(createHeadlights('teardrop', sharedMat))
-      root.add(createRearLightingAndExhaust('center_dual', sharedMat))
-      break
-    }
-
-    case 'gt1_lemans': {
-      wheelStyle = '5spoke'
-      wheelPositions = [
-        [-1.08, 0.38, 1.55],
-        [1.08, 0.38, 1.55],
-        [-1.12, 0.38, -1.45],
-        [1.12, 0.38, -1.45],
-      ]
-
-      // Ultra-Low Le Mans Silhouette
-      const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.45, 4.8), bodyPaintMat)
-      lowerBody.position.y = 0.46
-      root.add(lowerBody)
-
-      // Elongated Front Nose with Deep Aero Vents
-      const noseGeo = new THREE.BoxGeometry(1.85, 0.28, 1.8)
-      const nose = new THREE.Mesh(noseGeo, bodyPaintMat)
-      nose.position.set(0, 0.5, 1.5)
-      nose.rotation.x = 0.16
-      root.add(nose)
-
-      // Low Le Mans Cockpit with Roof Air Intake Scoop
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.52, 1.6), sharedMat.glass)
-      cabin.position.set(0, 0.95, -0.05)
-      root.add(cabin)
-
-      const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 1.1), bodyPaintMat)
+      ;[-0.91, 0.91].forEach((xPos) => {
+        const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.24, 0.48), accentMat)
+        endplate.position.set(xPos, 1.32, -1.92)
+        root.add(endplate)
+      })
+    } else if (carId === 'gt1_lemans') {
+      // 1998 GT1 Roof Scoop & Longtail Wing
+      const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 1.15), new THREE.MeshPhysicalMaterial({ color: new THREE.Color(paintColorHex), metalness: 0.65, roughness: 0.22, clearcoat: 1.0 }))
       roofScoop.position.set(0, 1.25, -0.15)
       roofScoop.rotation.x = -0.12
       root.add(roofScoop)
+      bodyMaterials.push(roofScoop.material)
 
-      // Elongated Long-Tail Rear Deck
-      const longTail = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.35, 1.7), bodyPaintMat)
-      longTail.position.set(0, 0.58, -1.5)
-      root.add(longTail)
+      ;[-0.68, 0.68].forEach((xPos) => {
+        const mount = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.48, 0.22), carbonMat)
+        mount.position.set(xPos, 0.98, -2.18)
+        root.add(mount)
+      })
 
-      // Massive Rear Le Mans Wing
-      const wingMountL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.45, 0.2), sharedMat.carbonFiber)
-      wingMountL.position.set(-0.65, 0.95, -2.15)
-      root.add(wingMountL)
-      const wingMountR = wingMountL.clone()
-      wingMountR.position.x = 0.65
-      root.add(wingMountR)
-
-      const leMansWing = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.52), sharedMat.carbonFiber)
-      leMansWing.position.set(0, 1.18, -2.2)
+      const leMansWing = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.08, 0.52), carbonMat)
+      leMansWing.position.set(0, 1.22, -2.22)
       leMansWing.rotation.x = 0.12
+      leMansWing.castShadow = true
       root.add(leMansWing)
-
-      // Rear Diffuser
-      const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 0.5), sharedMat.carbonFiber)
-      diffuser.position.set(0, 0.24, -2.35)
-      diffuser.rotation.x = -0.3
-      root.add(diffuser)
-
-      root.add(createCockpitInterior(sharedMat, true))
-      root.add(createHeadlights('teardrop', sharedMat))
-      root.add(createRearLightingAndExhaust('center_dual', sharedMat))
-      break
     }
+
+    root.add(container)
   }
 
-  // Add 4 Wheel Assemblies
-  const wheels = []
-  wheelPositions.forEach(([x, y, z]) => {
-    const wheel = createWheelAssembly(wheelColorHex, wheelStyle, sharedMat)
-    wheel.position.set(x, y, z)
-    if (x < 0) {
-      wheel.rotation.y = Math.PI
-    }
-    root.add(wheel)
-    wheels.push(wheel)
-  })
+  if (cachedPorscheGLTF) {
+    applyGLTFModel(cachedPorscheGLTF)
+  } else {
+    gltfLoadCallbacks.push((gltf) => {
+      applyGLTFModel(gltf)
+    })
+  }
 
-  // Expose API on root object for live customization
+  // Dynamic Customization Interface
   root.userData = {
     carId,
-    bodyPaintMaterial: bodyPaintMat,
-    accentPaintMaterial: accentPaintMat,
-    wheels,
-    sharedMaterials: sharedMat,
     setPaintColor(hex) {
-      bodyPaintMat.color.set(hex)
+      bodyMaterials.forEach((m) => m.color.set(hex))
     },
     setStripeColor(hex) {
-      accentPaintMat.color.set(hex)
+      accentMat.color.set(hex)
     },
     setWheelFinish(hex, metalness = 0.85, roughness = 0.25) {
-      wheels.forEach((w) => {
-        if (w.userData.rimMaterial) {
-          w.userData.rimMaterial.color.set(hex)
-          w.userData.rimMaterial.metalness = metalness
-          w.userData.rimMaterial.roughness = roughness
-        }
+      rimMaterials.forEach((m) => {
+        m.color.set(hex)
+        m.metalness = metalness
+        m.roughness = roughness
       })
     },
     toggleHeadlights(on) {
-      sharedMat.headlightReflector.emissive.set(on ? 0xfffae6 : 0x000000)
-      sharedMat.headlightReflector.emissiveIntensity = on ? 1.8 : 0
-      sharedMat.taillightReflector.emissiveIntensity = on ? 1.2 : 0.4
+      lightMaterials.forEach((m) => {
+        if (m.emissive) {
+          m.emissive.set(on ? 0xfffae6 : 0x000000)
+          m.emissiveIntensity = on ? 2.0 : 0
+        }
+      })
     },
   }
 
