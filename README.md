@@ -2,11 +2,24 @@
 
 A browser-based tribute to the legendary classic **Need for Speed: Porsche Unleashed (2000)**, built with modern WebGL (**Three.js**), 3D rigid-body physics (**Rapier3D**), and Web Audio API synthesis.
 
-Experience iconic Porsche eras, inspect detailed 3D models in the interactive 360° Showroom, customize factory paint colors and wheels, rev the air-cooled flat-6 boxer engine, and test your skills on the circuit in Factory Driver career challenges with authentic analog VDO gauges and multi-camera perspectives.
+Experience iconic Porsche eras, inspect detailed 3D models in the interactive 360° Showroom, customize factory paint colors and wheels, rev the air-cooled flat-6 boxer engine, and test your skills on the circuit in Factory Driver career challenges with authentic analog VDO gauges, dynamic weight transfer, Pacejka tire physics, real-time skidmarks, and tire smoke.
 
 ---
 
 ## ✨ Features
+
+### 🛞 Advanced Porsche Vehicle Dynamics & Physics
+* **Rear-Engine (RR) vs Mid-Engine (MR) Dynamics**: 62% rear weight bias on 911 models with authentic polar moment of inertia, producing the legendary Porsche pendulum swing and trail-braking / lift-off oversteer.
+* **Non-Linear Pacejka Tire Slip Model**: Realistic lateral tire grip curves with peak traction at ~7°–9° slip angle transitioning progressively into controllable power slides.
+* **Dynamic Weight Transfer & Suspension Motion**:
+  * **Braking Dive**: Front axle loads up under heavy braking (+30% front grip), unweighting the rear axle for corner entry rotation.
+  * **Acceleration Squat**: Rear tires hook up under power for rapid straightline launches.
+  * **Chassis Roll**: Dynamic body lean in high-G turns.
+* **Surface Grip Friction Model**: Distinct friction coefficients for Asphalt ($\mu = 1.0$), Track Curbs ($\mu = 0.85$ with chassis vibration), and Off-track Grass ($\mu = 0.45$ with traction loss).
+* **Aerodynamic Downforce ($F \propto v^2$)**: High-speed stability scaling quadratically with vehicle velocity for winged models (930 Whale Tail, 993 GT2, 996 GT3 RS, 911 GT1).
+* **Real-time 3D Tire Skidmarks & Smoke**: Dynamic ribbon mesh skidmarks left on the track and volumetric bill-boarded smoke particle puffs during drifts, burnouts, and handbrake turns.
+
+---
 
 ### ⏱️ Analog Cockpit & VDO Gauge Cluster HUD
 * **Central VDO Tachometer**: 0–8,000 / 10,000 RPM circular gauge with high-contrast numerals, redline arc, and sweeping orange needle with physical inertia.
@@ -41,17 +54,6 @@ Experience iconic Porsche eras, inspect detailed 3D models in the interactive 36
 
 ---
 
-### 🕹️ Physics & Factory Driver Gameplay
-* **Rear-Engine Handling**: Realistic pendulum weight transfer, snap oversteer, lateral tire grip curves, and handbrake power slides.
-* **Component Damage Model**: Real-time wear and tear on Engine, Transmission, Suspension, and Bodywork impacting performance.
-* **Career Missions**:
-  * **Slalom Drift Test**: Navigate checkpoint gates and rack up drift points.
-  * **Precision Line**: Hit clean apexes and finish laps within time constraints.
-  * **Prototype Showdown**: High-speed endurance while managing vehicle condition.
-* **Circuit Garage**: Upgrade Engine Tuning, Suspension Kits, Brake Systems, Tire Compounds, and Aero Downforce.
-
----
-
 ## 🎮 Controls
 
 ### In Showroom
@@ -81,7 +83,7 @@ Experience iconic Porsche eras, inspect detailed 3D models in the interactive 36
 ## 🛠️ Technology Stack
 
 * **Rendering Engine**: [Three.js](https://threejs.org/) (WebGL with PBR Physical Materials, PCF Soft Shadows & ACES Filmic Tone Mapping)
-* **Physics Engine**: [@dimforge/rapier3d-compat](https://rapier.rs/) (Fast WASM rigid-body 3D physics)
+* **Physics Engine**: [@dimforge/rapier3d-compat](https://rapier.rs/) + Custom `VehicleDynamics` (Pacejka slip curves & weight transfer)
 * **Instruments & HUD**: HTML5 High-DPI Canvas 2D (Analog needle kinematics & 4-corner vector diagnostics)
 * **Audio Engine**: Web Audio API (Procedural multi-oscillator flat-6 synthesis & filter automation)
 * **Bundler & Dev Server**: [Vite](https://vitejs.dev/)
@@ -91,33 +93,11 @@ Experience iconic Porsche eras, inspect detailed 3D models in the interactive 36
 
 ## 🚀 Getting Started
 
-### Prerequisites
-* [Node.js](https://nodejs.org/) (version 18+ recommended)
-* `npm`
-
-### Installation
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/porsche-game.git
-
-# Navigate into project directory
-cd porsche-game
-
-# Install dependencies
 npm install
-```
-
-### Running Locally
-```bash
 npm run dev
 ```
-Open your browser and navigate to `http://localhost:5173/`.
-
-### Building for Production
-```bash
-npm run build
-```
-The optimized production bundle will be created in the `dist/` directory.
+Open `http://localhost:5173/` in your browser.
 
 ---
 

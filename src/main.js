@@ -4,6 +4,8 @@ import RAPIER from '@dimforge/rapier3d-compat'
 import { PorscheShowroom } from './showroom.js'
 import { buildPorsche3DModel, PORSCHE_CATALOG } from './carBuilder.js'
 import { GaugeCluster } from './gaugeCluster.js'
+import { VehicleDynamics } from './vehicleDynamics.js'
+import { TireEffects } from './tireEffects.js'
 
 await RAPIER.init()
 
@@ -121,6 +123,12 @@ sun.shadow.camera.top = 50
 sun.shadow.camera.bottom = -50
 scene.add(sun)
 
+// Tire Effects System (Skidmarks & Smoke)
+const tireEffects = new TireEffects(scene)
+
+// Vehicle Dynamics Engine
+const vehicleDynamics = new VehicleDynamics()
+
 // Rapier Physics World
 const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 })
 
@@ -209,8 +217,8 @@ scene.add(carMeshGroup)
 
 // Dynamic Physics Body for Player Car
 const rbDesc = RAPIER.RigidBodyDesc.dynamic()
-  .setLinearDamping(0.72)
-  .setAngularDamping(1.15)
+  .setLinearDamping(0.68)
+  .setAngularDamping(1.1)
   .setMass(1350)
 const dynamicBody = world.createRigidBody(rbDesc)
 dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
@@ -221,14 +229,13 @@ const GEAR_RATIOS = [3.82, 2.25, 1.52, 1.15, 0.92, 0.75]
 const FINAL_DRIVE = 3.44
 
 const drivetrain = {
-  gear: 1, // -1: Reverse, 1..6: Forward gears
+  gear: 1,
   isManual: false,
   rpm: 900,
   idleRpm: 900,
   maxRpm: 8000,
   redlineRpm: 6800,
   shiftTimer: 0,
-  clutchEngaged: true,
   boost: 0,
 }
 
@@ -298,13 +305,11 @@ window.addEventListener('keydown', (event) => {
   // Manual Shift Keys
   if (drivetrain.isManual) {
     if (key === 'e') {
-      // Shift Up
       if (drivetrain.gear < 6) {
         drivetrain.gear += 1
         triggerGearShiftEffect()
       }
     } else if (key === 'q') {
-      // Shift Down
       if (drivetrain.gear > 1) {
         drivetrain.gear -= 1
         triggerGearShiftEffect()
@@ -415,11 +420,6 @@ const gameState = {
   challengeResult: null,
 }
 
-const maxSpeed = 32
-const engineForce = 64
-const steeringRate = 0.048
-const drag = 0.93
-
 function getCareerRanking() {
   const missionCount = Object.keys(playerProgress.completedMissions).length
   if (missionCount === 0) return { tier: 'Factory Rookie', level: 1 }
@@ -433,10 +433,6 @@ function formatTime(seconds) {
   const secs = Math.floor(seconds % 60)
   const ms = Math.floor((seconds % 1) * 100)
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max)
 }
 
 function computeOverallHealth() {
@@ -469,6 +465,7 @@ function spawnPlayerCarModel() {
   const config = PORSCHE_CATALOG[playerProgress.selectedCarId]
   hudCarNameEl.textContent = config ? config.name : 'Porsche'
   gaugeCluster.setCarConfig(config)
+  vehicleDynamics.setConfig(config)
 }
 
 function refreshHud() {
@@ -576,8 +573,11 @@ function resetChallengeState() {
   carState.components.leftSuspension = 100
   carState.components.rightSuspension = 100
 
+  vehicleDynamics.heading = 0
   drivetrain.gear = 1
   drivetrain.rpm = drivetrain.idleRpm
+
+  tireEffects.clear()
 
   dynamicBody.setLinvel({ x: 0, y: 0, z: 0 }, true)
   dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
@@ -590,11 +590,11 @@ function resetChallengeState() {
 }
 
 function triggerGearShiftEffect() {
-  drivetrain.shiftTimer = 0.12 // Momentary power cut
+  drivetrain.shiftTimer = 0.12
   if (gameState.engineGain && gameState.audioReady) {
     const now = gameState.audioCtx.currentTime
     gameState.engineGain.gain.setValueAtTime(0.02, now)
-    gameState.engineGain.gain.exponentialRampToValueAtTime(0.2, now + 0.14)
+    gameState.engineGain.gain.exponentialRampToValueAtTime(0.22, now + 0.14)
   }
 }
 
@@ -817,7 +817,6 @@ function updateDrivetrain(speedKmh, throttle, delta) {
 
   const currentGearRatio = drivetrain.gear === -1 ? 3.5 : GEAR_RATIOS[drivetrain.gear - 1] || 1.0
 
-  // Calculate Engine RPM from wheel speed & gear ratio
   const wheelRpm = (speedKmh / (0.42 * 2 * Math.PI * 0.06)) * FINAL_DRIVE * currentGearRatio
   const throttleFlare = throttle > 0 ? (1 - speedKmh / 320) * 1200 : 0
   const calculatedRpm = Math.max(drivetrain.idleRpm, wheelRpm + throttleFlare)
@@ -827,19 +826,15 @@ function updateDrivetrain(speedKmh, throttle, delta) {
   // Automatic Gear Shift Logic
   if (!drivetrain.isManual && drivetrain.shiftTimer <= 0) {
     if (throttle < 0 && speedKmh < 3) {
-      // Reverse
       drivetrain.gear = -1
     } else if (throttle >= 0 && drivetrain.gear === -1) {
       drivetrain.gear = 1
       triggerGearShiftEffect()
     } else if (drivetrain.gear > 0) {
-      // Upshift condition
       if (drivetrain.rpm > drivetrain.redlineRpm - 200 && drivetrain.gear < 6) {
         drivetrain.gear += 1
         triggerGearShiftEffect()
-      }
-      // Downshift condition
-      else if (drivetrain.rpm < 2600 && drivetrain.gear > 1 && speedKmh < (drivetrain.gear * 35)) {
+      } else if (drivetrain.rpm < 2600 && drivetrain.gear > 1 && speedKmh < drivetrain.gear * 35) {
         drivetrain.gear -= 1
         triggerGearShiftEffect()
       }
@@ -861,37 +856,45 @@ function updateCar(delta) {
     carState.lapTime = performance.now() / 1000 - carState.lapStartTime
   }
 
-  const velocity = dynamicBody.linvel()
-  const speed = Math.hypot(velocity.x, velocity.z)
-  const speedKmh = Math.round(Math.min(speed * 4.8, 999))
-  speedEl.textContent = String(speedKmh)
+  const currentVel = dynamicBody.linvel()
+  const currentPos = dynamicBody.translation()
 
   const throttle = (controls.forward ? 1 : 0) - (controls.backward ? 1 : 0)
   const steering = (controls.right ? 1 : 0) - (controls.left ? 1 : 0)
   const handbrake = controls.handbrake ? 1 : 0
 
+  // Advanced Vehicle Dynamics & Weight Transfer Step
+  const stepResult = vehicleDynamics.computeStep({
+    currentVelocity: currentVel,
+    currentPosition: currentPos,
+    throttle: drivetrain.shiftTimer > 0 ? 0 : throttle,
+    steering,
+    handbrake,
+    delta,
+    upgrades: playerProgress.upgrades,
+  })
+
+  carState.heading = stepResult.heading
+  const speedKmh = Math.round(vehicleDynamics.speedKmh)
+  speedEl.textContent = String(speedKmh)
+
   updateDrivetrain(speedKmh, throttle, delta)
 
-  const engineFactor = 0.5 + (carState.components.engine / 100) * 0.7 + getUpgradeLevel('engine') * 0.08
-  const suspensionFactor = 0.6 + (carState.components.suspension / 100) * 0.6 + getUpgradeLevel('suspension') * 0.1
-  const effectiveMaxSpeed = maxSpeed * engineFactor
+  // Apply new velocity to rigid body
+  dynamicBody.setLinvel({ x: stepResult.nextVelocity.x, y: currentVel.y, z: stepResult.nextVelocity.z }, true)
 
-  const forwardX = Math.sin(carState.heading)
-  const forwardZ = Math.cos(carState.heading)
-  const rightX = forwardZ
-  const rightZ = -forwardX
+  const translation = dynamicBody.translation()
+  carMeshGroup.position.set(translation.x, translation.y, translation.z)
 
-  const lateralSpeed = velocity.x * rightX + velocity.z * rightZ
+  // Authentic Suspension Pitch, Roll & Heading
+  carMeshGroup.rotation.y = stepResult.heading
+  carMeshGroup.rotation.x = stepResult.pitch // Dive under braking, squat under power
+  carMeshGroup.rotation.z = -stepResult.roll // Body lean in turns
 
-  // Iconic Rear-Engine Pendulum Physics & Drift Handling
-  const driftIntent = clamp(Math.abs(steering) * (speed / 9) + handbrake * 0.8, 0, 1)
-  const gripTarget = THREE.MathUtils.lerp(0.94, 0.44, driftIntent)
-  const grip = gripTarget * suspensionFactor
-  const lateralCorrection = lateralSpeed * (1 - grip) * 0.2
-  const nextVelocity = {
-    x: velocity.x - rightX * lateralCorrection,
-    y: velocity.y,
-    z: velocity.z - rightZ * lateralCorrection,
+  // Drift Score Accumulation
+  if (stepResult.driftIntensity > 0.2) {
+    const driftPower = stepResult.driftIntensity * 28 + (speedKmh / 10) * 1.5
+    carState.driftScore += driftPower * delta * 12
   }
 
   const selectedChallenge = careerChallenges[gameState.challengeId] || careerChallenges.slalom
@@ -901,53 +904,44 @@ function updateCar(delta) {
     carState.challengeName = `${selectedChallenge.title} • Objective Complete!`
   }
 
-  if (throttle !== 0 && drivetrain.shiftTimer <= 0) {
-    const force = throttle * engineForce * engineFactor * (1 - speed / (effectiveMaxSpeed + 14))
-    nextVelocity.x += forwardX * force
-    nextVelocity.z += forwardZ * force
-
-    if (speed > 22) {
-      carState.components.engine = clamp(carState.components.engine - 0.025, 0, 100)
-    }
-  } else {
-    nextVelocity.x *= drag
-    nextVelocity.z *= drag
+  // Component Wear / Damage from intense driving & curb strikes
+  if (stepResult.surface === 'curb' && speedKmh > 60) {
+    carState.components.leftSuspension = Math.max(0, carState.components.leftSuspension - delta * 2.5)
+    carState.components.rightSuspension = Math.max(0, carState.components.rightSuspension - delta * 2.5)
+  }
+  if (stepResult.driftIntensity > 0.6) {
+    carState.components.transmission = Math.max(0, carState.components.transmission - delta * 1.2)
   }
 
-  if (Math.abs(steering) > 0 && speed > 1) {
-    const turnStrength = steering * steeringRate * (0.35 + Math.min(speed / effectiveMaxSpeed, 1))
-    carState.heading += turnStrength * (1 + handbrake * 0.65)
+  // Calculate World Positions of Rear Tires for Skidmarks and Smoke
+  const forwardVec = new THREE.Vector3(Math.sin(stepResult.heading), 0, Math.cos(stepResult.heading))
+  const rightVec = new THREE.Vector3(forwardVec.z, 0, -forwardVec.x)
+
+  const rearAxlePos = new THREE.Vector3(translation.x, translation.y, translation.z).addScaledVector(forwardVec, -1.35)
+  const tireLeftPos = rearAxlePos.clone().addScaledVector(rightVec, -1.05)
+  const tireRightPos = rearAxlePos.clone().addScaledVector(rightVec, 1.05)
+
+  // Emit 3D Skidmarks
+  tireEffects.addSkidmark(tireLeftPos, tireRightPos, stepResult.driftIntensity)
+
+  // Emit Tire Smoke Particles
+  if (stepResult.driftIntensity > 0.35 && speedKmh > 10) {
+    tireEffects.emitSmoke(tireLeftPos, stepResult.nextVelocity, stepResult.driftIntensity)
+    tireEffects.emitSmoke(tireRightPos, stepResult.nextVelocity, stepResult.driftIntensity)
   }
-
-  if (speed > effectiveMaxSpeed) {
-    const clampRatio = effectiveMaxSpeed / Math.max(speed, 0.001)
-    nextVelocity.x *= clampRatio
-    nextVelocity.z *= clampRatio
-  }
-
-  if (handbrake && speed > 7 && Math.abs(steering) > 0.1) {
-    const driftPower = Math.abs(lateralSpeed) * 0.16 + speed * 0.05 + handbrake * 14
-    carState.driftScore += driftPower * 0.14
-    nextVelocity.x += rightX * steering * 16 * handbrake
-    nextVelocity.z += rightZ * steering * 16 * handbrake
-  }
-
-  dynamicBody.setLinvel({ x: nextVelocity.x, y: velocity.y, z: nextVelocity.z }, true)
-
-  const translation = dynamicBody.translation()
-  carMeshGroup.position.set(translation.x, translation.y, translation.z)
-  carMeshGroup.rotation.y = carState.heading
-  carMeshGroup.rotation.z = THREE.MathUtils.clamp(lateralSpeed * 0.08 + steering * handbrake * 0.15, -0.25, 0.25)
 
   // Update Gauge Cluster
-  gaugeCluster.update({
-    rpm: drivetrain.rpm,
-    speedKmh,
-    gear: drivetrain.gear,
-    isManual: drivetrain.isManual,
-    boost: drivetrain.boost,
-    damage: carState.components,
-  }, delta)
+  gaugeCluster.update(
+    {
+      rpm: drivetrain.rpm,
+      speedKmh,
+      gear: drivetrain.gear,
+      isManual: drivetrain.isManual,
+      boost: drivetrain.boost,
+      damage: carState.components,
+    },
+    delta
+  )
 
   refreshHud()
   handleCheckpointProgress()
@@ -996,7 +990,7 @@ function updateAudio() {
 
   const rpmFraction = drivetrain.rpm / drivetrain.maxRpm
   const targetFrequency = profile.basePitch + rpmFraction * (profile.maxFreq - profile.basePitch)
-  const targetGain = drivetrain.shiftTimer > 0 ? 0.02 : (0.04 + Math.abs(throttle) * 0.16 + handbrake * 0.04)
+  const targetGain = drivetrain.shiftTimer > 0 ? 0.02 : 0.04 + Math.abs(throttle) * 0.16 + handbrake * 0.04
 
   gameState.engineOsc.frequency.setTargetAtTime(targetFrequency, gameState.audioCtx.currentTime, 0.05)
   if (gameState.engineOsc2) {
@@ -1029,6 +1023,7 @@ function gameLoop() {
     updateCar(delta)
     updateAudio()
     updateCamera()
+    tireEffects.update(delta, camera)
     animateCheckpointEffects(delta)
     renderer.render(scene, camera)
   }
