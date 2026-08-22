@@ -2,11 +2,21 @@
 
 A browser-based tribute to the legendary classic **Need for Speed: Porsche Unleashed (2000)**, built with modern WebGL (**Three.js**), 3D rigid-body physics (**Rapier3D**), and Web Audio API synthesis.
 
-Experience iconic Porsche eras, inspect detailed 3D models in the interactive 360° Showroom, customize factory paint colors and wheels, rev the air-cooled flat-6 boxer engine, and test your skills on the circuit in Factory Driver career challenges.
+Experience iconic Porsche eras, inspect detailed 3D models in the interactive 360° Showroom, customize factory paint colors and wheels, rev the air-cooled flat-6 boxer engine, and test your skills on the circuit in Factory Driver career challenges with authentic analog VDO gauges and multi-camera perspectives.
 
 ---
 
 ## ✨ Features
+
+### ⏱️ Analog Cockpit & VDO Gauge Cluster HUD
+* **Central VDO Tachometer**: 0–8,000 / 10,000 RPM circular gauge with high-contrast numerals, redline arc, and sweeping orange needle with physical inertia.
+* **Shift Light & Gearbox Badge**: Real-time gear indicator (`R`, `N`, `1`–`6`) with flashing redline shift light.
+* **Dual Speedometer Dial**: 0–320 km/h with integrated digital readout and boost calculation.
+* **4-Corner Diagnostics Wireframe**: Live chassis damage schematic color-coded from Green (100%) to Pulsing Red (<25%) for Front Bumper, Left & Right Suspension/Tires, Flat-6 Engine, and Transmission.
+* **6-Speed Drivetrain & RPM Physics**: Realistic gear ratios, automatic transmission with kickdown, manual shift support, and power-cut gear shift audio effects.
+* **Multi-Camera Angles**: Switch between Chase Cam, Close Chase, Hood / Bonnet Cam, and Low Bumper Cam with <kbd>C</kbd>.
+
+---
 
 ### 🏛️ Interactive 360° Porsche Showroom
 * **Studio Atmosphere**: High-gloss reflective pedestal, 3-point softbox studio lighting, glowing perimeter ring, and auto-turntable spin.
@@ -61,6 +71,10 @@ Experience iconic Porsche eras, inspect detailed 3D models in the interactive 36
 | <kbd>A</kbd> / <kbd>◄</kbd> | Steer Left |
 | <kbd>D</kbd> / <kbd>►</kbd> | Steer Right |
 | <kbd>Space</kbd> / <kbd>Shift</kbd> | Handbrake / Drift Initiate |
+| <kbd>C</kbd> | Cycle Camera (Chase, Close, Hood, Bumper) |
+| <kbd>M</kbd> | Toggle Transmission (Automatic / Manual) |
+| <kbd>E</kbd> | Manual Shift Up (in Manual Mode) |
+| <kbd>Q</kbd> | Manual Shift Down (in Manual Mode) |
 
 ---
 
@@ -68,6 +82,7 @@ Experience iconic Porsche eras, inspect detailed 3D models in the interactive 36
 
 * **Rendering Engine**: [Three.js](https://threejs.org/) (WebGL with PBR Physical Materials, PCF Soft Shadows & ACES Filmic Tone Mapping)
 * **Physics Engine**: [@dimforge/rapier3d-compat](https://rapier.rs/) (Fast WASM rigid-body 3D physics)
+* **Instruments & HUD**: HTML5 High-DPI Canvas 2D (Analog needle kinematics & 4-corner vector diagnostics)
 * **Audio Engine**: Web Audio API (Procedural multi-oscillator flat-6 synthesis & filter automation)
 * **Bundler & Dev Server**: [Vite](https://vitejs.dev/)
 * **Styling**: Modern Vanilla CSS (Glassmorphism, CSS Variables, Typography from Google Fonts)

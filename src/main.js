@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier3d-compat'
 import { PorscheShowroom } from './showroom.js'
 import { buildPorsche3DModel, PORSCHE_CATALOG } from './carBuilder.js'
+import { GaugeCluster } from './gaugeCluster.js'
 
 await RAPIER.init()
 
@@ -12,10 +13,12 @@ app.innerHTML = `
 
   <div id="game-shell" class="game-shell">
     <div class="hud-top-right">
+      <button id="btn-camera-view" class="hud-btn" type="button">🎥 Camera: Chase (C)</button>
       <button id="btn-back-showroom" class="hud-btn" type="button">🏎️ Showroom / Garage</button>
       <button id="btn-restart-run" class="hud-btn" type="button">🔄 Restart Run</button>
     </div>
 
+    <!-- Top Left Mission HUD -->
     <div class="hud">
       <div class="hud-panel">
         <div class="panel-header">
@@ -28,8 +31,13 @@ app.innerHTML = `
         </div>
         <div id="challenge-text" class="objective">Checkpoint 1 / 8</div>
         <div id="score" class="objective subtle">Drift score: 0</div>
-        <div id="damage" class="damage">Engine 100% • Transmission 100% • Suspension 100% • Bumper 100%</div>
       </div>
+    </div>
+
+    <!-- Bottom Right Analog VDO Gauge Cluster & Diagnostics Canvas -->
+    <div class="gauge-cluster-container">
+      <canvas id="gauge-canvas" width="420" height="210"></canvas>
+      <div class="gearbox-mode-pill" id="gearbox-mode-pill">AUTO (M: Toggle)</div>
     </div>
 
     <div id="checkpoint-toast">Checkpoint clear</div>
@@ -64,7 +72,6 @@ const healthEl = document.querySelector('#health')
 const lapEl = document.querySelector('#lap')
 const challengeTextEl = document.querySelector('#challenge-text')
 const scoreEl = document.querySelector('#score')
-const damageEl = document.querySelector('#damage')
 const overlayEl = document.querySelector('#overlay')
 const overlayTitleEl = document.querySelector('#overlay-title')
 const overlaySubtitleEl = document.querySelector('#overlay-subtitle')
@@ -76,6 +83,12 @@ const hudCarNameEl = document.querySelector('#hud-car-name')
 
 const btnBackShowroom = document.querySelector('#btn-back-showroom')
 const btnRestartRun = document.querySelector('#btn-restart-run')
+const btnCameraView = document.querySelector('#btn-camera-view')
+const gearboxModePill = document.querySelector('#gearbox-mode-pill')
+
+// Initialize Gauge Cluster
+const gaugeCanvas = document.querySelector('#gauge-canvas')
+const gaugeCluster = new GaugeCluster(gaugeCanvas)
 
 // Game Track Scene
 const scene = new THREE.Scene()
@@ -83,7 +96,6 @@ scene.background = new THREE.Color(0x7ba2cc)
 scene.fog = new THREE.FogExp2(0x7ba2cc, 0.012)
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300)
-camera.position.set(0, 4, 9)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -204,6 +216,43 @@ const dynamicBody = world.createRigidBody(rbDesc)
 dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
 world.createCollider(RAPIER.ColliderDesc.cuboid(1.0, 0.45, 2.2), dynamicBody)
 
+// Drivetrain & Transmission System
+const GEAR_RATIOS = [3.82, 2.25, 1.52, 1.15, 0.92, 0.75]
+const FINAL_DRIVE = 3.44
+
+const drivetrain = {
+  gear: 1, // -1: Reverse, 1..6: Forward gears
+  isManual: false,
+  rpm: 900,
+  idleRpm: 900,
+  maxRpm: 8000,
+  redlineRpm: 6800,
+  shiftTimer: 0,
+  clutchEngaged: true,
+  boost: 0,
+}
+
+// Multi-Camera System
+const CAMERA_MODES = ['chase', 'close', 'hood', 'cockpit']
+let currentCameraIndex = 0
+
+function cycleCameraView() {
+  currentCameraIndex = (currentCameraIndex + 1) % CAMERA_MODES.length
+  const mode = CAMERA_MODES[currentCameraIndex]
+  const labels = {
+    chase: '🎥 Camera: Chase (C)',
+    close: '🎥 Camera: Close Chase (C)',
+    hood: '🎥 Camera: Hood / Bonnet (C)',
+    cockpit: '🎥 Camera: Low Bumper (C)',
+  }
+  btnCameraView.textContent = labels[mode]
+  showToast(labels[mode].replace('(C)', '').trim())
+}
+
+btnCameraView.addEventListener('click', () => {
+  cycleCameraView()
+})
+
 // User Input Controls
 const controls = {
   forward: false,
@@ -233,6 +282,38 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault()
     controls[action] = true
   }
+
+  // Camera Switcher Key
+  if (key === 'c') {
+    cycleCameraView()
+  }
+
+  // Gearbox Mode Toggle
+  if (key === 'm') {
+    drivetrain.isManual = !drivetrain.isManual
+    gearboxModePill.textContent = drivetrain.isManual ? 'MANUAL (Q: Down, E: Up)' : 'AUTO (M: Toggle)'
+    showToast(drivetrain.isManual ? 'Manual Transmission Engaged' : 'Automatic Transmission Engaged')
+  }
+
+  // Manual Shift Keys
+  if (drivetrain.isManual) {
+    if (key === 'e') {
+      // Shift Up
+      if (drivetrain.gear < 6) {
+        drivetrain.gear += 1
+        triggerGearShiftEffect()
+      }
+    } else if (key === 'q') {
+      // Shift Down
+      if (drivetrain.gear > 1) {
+        drivetrain.gear -= 1
+        triggerGearShiftEffect()
+      } else if (drivetrain.gear === 1) {
+        drivetrain.gear = -1
+        triggerGearShiftEffect()
+      }
+    }
+  }
 })
 
 window.addEventListener('keyup', (event) => {
@@ -247,6 +328,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
+  gaugeCluster.resize()
 })
 
 // Career Challenges
@@ -312,13 +394,14 @@ const carState = {
   components: {
     engine: 100,
     transmission: 100,
-    suspension: 100,
     frontBumper: 100,
+    leftSuspension: 100,
+    rightSuspension: 100,
   },
 }
 
 const gameState = {
-  mode: 'showroom', // 'showroom' | 'race'
+  mode: 'showroom',
   started: false,
   finished: false,
   challengeId: 'slalom',
@@ -332,8 +415,8 @@ const gameState = {
   challengeResult: null,
 }
 
-const maxSpeed = 30
-const engineForce = 62
+const maxSpeed = 32
+const engineForce = 64
 const steeringRate = 0.048
 const drag = 0.93
 
@@ -371,7 +454,6 @@ function getUpgradeCost(key) {
 }
 
 function spawnPlayerCarModel() {
-  // Remove existing model
   while (carMeshGroup.children.length > 0) {
     carMeshGroup.remove(carMeshGroup.children[0])
   }
@@ -386,6 +468,7 @@ function spawnPlayerCarModel() {
 
   const config = PORSCHE_CATALOG[playerProgress.selectedCarId]
   hudCarNameEl.textContent = config ? config.name : 'Porsche'
+  gaugeCluster.setCarConfig(config)
 }
 
 function refreshHud() {
@@ -399,7 +482,6 @@ function refreshHud() {
   const lapTimeStr = gameState.started ? ` • ${formatTime(carState.lapTime)}` : ''
   challengeTextEl.textContent = `${carState.challengeName}${lapTimeStr} • Objective ${Math.round(carState.driftScore)} / ${selectedChallenge.targetScore} • CP ${nextCheckpoint} / ${selectedChallenge.checkpointTotal}`
   scoreEl.textContent = `Drift score: ${Math.round(carState.driftScore)}`
-  damageEl.textContent = `Engine ${Math.round(carState.components.engine)}% • Transmission ${Math.round(carState.components.transmission)}% • Suspension ${Math.round(carState.components.suspension)}% • Bumper ${Math.round(carState.components.frontBumper)}%`
 }
 
 function showToast(message) {
@@ -490,8 +572,12 @@ function resetChallengeState() {
   gameState.challengeResult = null
   carState.components.engine = 100
   carState.components.transmission = 100
-  carState.components.suspension = 100
   carState.components.frontBumper = 100
+  carState.components.leftSuspension = 100
+  carState.components.rightSuspension = 100
+
+  drivetrain.gear = 1
+  drivetrain.rpm = drivetrain.idleRpm
 
   dynamicBody.setLinvel({ x: 0, y: 0, z: 0 }, true)
   dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
@@ -501,6 +587,15 @@ function resetChallengeState() {
     mesh.scale.set(1, 1, 1)
     mesh.userData.flash = 0
   })
+}
+
+function triggerGearShiftEffect() {
+  drivetrain.shiftTimer = 0.12 // Momentary power cut
+  if (gameState.engineGain && gameState.audioReady) {
+    const now = gameState.audioCtx.currentTime
+    gameState.engineGain.gain.setValueAtTime(0.02, now)
+    gameState.engineGain.gain.exponentialRampToValueAtTime(0.2, now + 0.14)
+  }
 }
 
 function setupAudio() {
@@ -642,8 +737,9 @@ garagePanelEl.addEventListener('click', (event) => {
     playerProgress.credits -= repairCost
     carState.components.engine = 100
     carState.components.transmission = 100
-    carState.components.suspension = 100
     carState.components.frontBumper = 100
+    carState.components.leftSuspension = 100
+    carState.components.rightSuspension = 100
     renderGaragePanel()
     refreshHud()
     showToast('Porsche restored to factory condition.')
@@ -714,7 +810,51 @@ function handleCheckpointProgress() {
   }
 }
 
-function updateCar() {
+function updateDrivetrain(speedKmh, throttle, delta) {
+  if (drivetrain.shiftTimer > 0) {
+    drivetrain.shiftTimer -= delta
+  }
+
+  const currentGearRatio = drivetrain.gear === -1 ? 3.5 : GEAR_RATIOS[drivetrain.gear - 1] || 1.0
+
+  // Calculate Engine RPM from wheel speed & gear ratio
+  const wheelRpm = (speedKmh / (0.42 * 2 * Math.PI * 0.06)) * FINAL_DRIVE * currentGearRatio
+  const throttleFlare = throttle > 0 ? (1 - speedKmh / 320) * 1200 : 0
+  const calculatedRpm = Math.max(drivetrain.idleRpm, wheelRpm + throttleFlare)
+
+  drivetrain.rpm = Math.min(calculatedRpm, drivetrain.maxRpm)
+
+  // Automatic Gear Shift Logic
+  if (!drivetrain.isManual && drivetrain.shiftTimer <= 0) {
+    if (throttle < 0 && speedKmh < 3) {
+      // Reverse
+      drivetrain.gear = -1
+    } else if (throttle >= 0 && drivetrain.gear === -1) {
+      drivetrain.gear = 1
+      triggerGearShiftEffect()
+    } else if (drivetrain.gear > 0) {
+      // Upshift condition
+      if (drivetrain.rpm > drivetrain.redlineRpm - 200 && drivetrain.gear < 6) {
+        drivetrain.gear += 1
+        triggerGearShiftEffect()
+      }
+      // Downshift condition
+      else if (drivetrain.rpm < 2600 && drivetrain.gear > 1 && speedKmh < (drivetrain.gear * 35)) {
+        drivetrain.gear -= 1
+        triggerGearShiftEffect()
+      }
+    }
+  }
+
+  // Turbo boost calculation
+  if (throttle > 0 && drivetrain.rpm > 3500) {
+    drivetrain.boost = Math.min(1.25, drivetrain.boost + delta * 1.5)
+  } else {
+    drivetrain.boost = Math.max(0, drivetrain.boost - delta * 2.5)
+  }
+}
+
+function updateCar(delta) {
   if (!gameState.started || gameState.finished) return
 
   if (carState.lapStartTime > 0) {
@@ -723,9 +863,14 @@ function updateCar() {
 
   const velocity = dynamicBody.linvel()
   const speed = Math.hypot(velocity.x, velocity.z)
+  const speedKmh = Math.round(Math.min(speed * 4.8, 999))
+  speedEl.textContent = String(speedKmh)
+
   const throttle = (controls.forward ? 1 : 0) - (controls.backward ? 1 : 0)
   const steering = (controls.right ? 1 : 0) - (controls.left ? 1 : 0)
   const handbrake = controls.handbrake ? 1 : 0
+
+  updateDrivetrain(speedKmh, throttle, delta)
 
   const engineFactor = 0.5 + (carState.components.engine / 100) * 0.7 + getUpgradeLevel('engine') * 0.08
   const suspensionFactor = 0.6 + (carState.components.suspension / 100) * 0.6 + getUpgradeLevel('suspension') * 0.1
@@ -756,13 +901,13 @@ function updateCar() {
     carState.challengeName = `${selectedChallenge.title} • Objective Complete!`
   }
 
-  if (throttle !== 0) {
+  if (throttle !== 0 && drivetrain.shiftTimer <= 0) {
     const force = throttle * engineForce * engineFactor * (1 - speed / (effectiveMaxSpeed + 14))
     nextVelocity.x += forwardX * force
     nextVelocity.z += forwardZ * force
 
     if (speed > 22) {
-      carState.components.engine = clamp(carState.components.engine - 0.03, 0, 100)
+      carState.components.engine = clamp(carState.components.engine - 0.025, 0, 100)
     }
   } else {
     nextVelocity.x *= drag
@@ -794,8 +939,15 @@ function updateCar() {
   carMeshGroup.rotation.y = carState.heading
   carMeshGroup.rotation.z = THREE.MathUtils.clamp(lateralSpeed * 0.08 + steering * handbrake * 0.15, -0.25, 0.25)
 
-  const speedKmh = Math.round(Math.min(speed * 4.8, 999))
-  speedEl.textContent = String(speedKmh)
+  // Update Gauge Cluster
+  gaugeCluster.update({
+    rpm: drivetrain.rpm,
+    speedKmh,
+    gear: drivetrain.gear,
+    isManual: drivetrain.isManual,
+    boost: drivetrain.boost,
+    damage: carState.components,
+  }, delta)
 
   refreshHud()
   handleCheckpointProgress()
@@ -803,11 +955,31 @@ function updateCar() {
 
 function updateCamera() {
   const carPosition = carMeshGroup.position.clone()
-  const offset = new THREE.Vector3(0, 3.2, -8.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), carState.heading)
-  const desiredPosition = carPosition.clone().add(offset)
-  camera.position.lerp(desiredPosition, 0.1)
+  const mode = CAMERA_MODES[currentCameraIndex]
 
-  const lookTarget = carPosition.clone().add(new THREE.Vector3(0, 1.2, 0))
+  let offset = new THREE.Vector3(0, 3.2, -8.2)
+  let lookOffset = new THREE.Vector3(0, 1.2, 0)
+  let lerpFactor = 0.1
+
+  if (mode === 'close') {
+    offset = new THREE.Vector3(0, 2.2, -5.4)
+    lookOffset = new THREE.Vector3(0, 1.0, 0)
+    lerpFactor = 0.14
+  } else if (mode === 'hood') {
+    offset = new THREE.Vector3(0, 1.3, 0.4)
+    lookOffset = new THREE.Vector3(0, 1.1, 15)
+    lerpFactor = 0.25
+  } else if (mode === 'cockpit') {
+    offset = new THREE.Vector3(0, 0.8, 2.4)
+    lookOffset = new THREE.Vector3(0, 0.7, 18)
+    lerpFactor = 0.35
+  }
+
+  const worldOffset = offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), carState.heading)
+  const desiredPosition = carPosition.clone().add(worldOffset)
+  camera.position.lerp(desiredPosition, lerpFactor)
+
+  const lookTarget = carPosition.clone().add(lookOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), carState.heading))
   camera.lookAt(lookTarget)
 }
 
@@ -816,23 +988,22 @@ const clock = new THREE.Clock()
 function updateAudio() {
   if (!gameState.audioReady || !gameState.engineOsc) return
 
-  const velocity = dynamicBody.linvel()
-  const speed = Math.hypot(velocity.x, velocity.z)
   const throttle = (controls.forward ? 1 : 0) - (controls.backward ? 1 : 0)
   const handbrake = controls.handbrake ? 1 : 0
 
   const carConfig = PORSCHE_CATALOG[playerProgress.selectedCarId]
   const profile = carConfig?.audioProfile || { basePitch: 55, revMulti: 7.0 }
 
-  const targetFrequency = profile.basePitch + speed * profile.revMulti + Math.abs(throttle) * 22 + handbrake * 20
-  const targetGain = 0.03 + Math.abs(throttle) * 0.14 + (speed / 28) * 0.08 + handbrake * 0.04
+  const rpmFraction = drivetrain.rpm / drivetrain.maxRpm
+  const targetFrequency = profile.basePitch + rpmFraction * (profile.maxFreq - profile.basePitch)
+  const targetGain = drivetrain.shiftTimer > 0 ? 0.02 : (0.04 + Math.abs(throttle) * 0.16 + handbrake * 0.04)
 
-  gameState.engineOsc.frequency.setTargetAtTime(targetFrequency, gameState.audioCtx.currentTime, 0.06)
+  gameState.engineOsc.frequency.setTargetAtTime(targetFrequency, gameState.audioCtx.currentTime, 0.05)
   if (gameState.engineOsc2) {
-    gameState.engineOsc2.frequency.setTargetAtTime(targetFrequency * 1.5, gameState.audioCtx.currentTime, 0.06)
+    gameState.engineOsc2.frequency.setTargetAtTime(targetFrequency * 1.5, gameState.audioCtx.currentTime, 0.05)
   }
-  gameState.engineFilter.frequency.setTargetAtTime(300 + speed * 26 + handbrake * 180, gameState.audioCtx.currentTime, 0.06)
-  gameState.engineGain.gain.setTargetAtTime(gameState.started ? targetGain : 0.0001, gameState.audioCtx.currentTime, 0.06)
+  gameState.engineFilter.frequency.setTargetAtTime(320 + rpmFraction * 2400, gameState.audioCtx.currentTime, 0.05)
+  gameState.engineGain.gain.setTargetAtTime(gameState.started ? targetGain : 0.0001, gameState.audioCtx.currentTime, 0.05)
 }
 
 function animateCheckpointEffects(delta) {
@@ -852,10 +1023,10 @@ function animateCheckpointEffects(delta) {
 }
 
 function gameLoop() {
+  const delta = Math.min(clock.getDelta(), 0.033)
   if (gameState.mode === 'race') {
-    const delta = Math.min(clock.getDelta(), 0.033)
     world.step()
-    updateCar()
+    updateCar(delta)
     updateAudio()
     updateCamera()
     animateCheckpointEffects(delta)

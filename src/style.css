@@ -505,7 +505,7 @@ body {
 }
 
 .hud-panel {
-  min-width: 290px;
+  min-width: 280px;
   background: rgba(10, 15, 29, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 16px;
@@ -565,18 +565,12 @@ body {
 
 .objective.subtle {
   margin-top: 2px;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   color: #bae6fd;
   font-size: 0.82rem;
 }
 
-.damage {
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: #94a3b8;
-}
-
-/* In-Game Top Right Controls / Back to Showroom */
+/* In-Game Top Right Controls */
 .hud-top-right {
   position: absolute;
   top: 20px;
@@ -603,6 +597,40 @@ body {
   background: rgba(30, 41, 59, 0.95);
   border-color: white;
   transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   ANALOG VDO GAUGE CLUSTER CONTAINER (BOTTOM RIGHT)
+   ========================================================================== */
+.gauge-cluster-container {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 15;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.65));
+}
+
+#gauge-canvas {
+  width: 420px;
+  height: 210px;
+}
+
+.gearbox-mode-pill {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #7dd3fc;
+  backdrop-filter: blur(10px);
 }
 
 #checkpoint-toast {
@@ -863,5 +891,12 @@ body {
   .showroom-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .gauge-cluster-container {
+    bottom: 10px;
+    right: 10px;
+    transform: scale(0.75);
+    transform-origin: bottom right;
   }
 }
