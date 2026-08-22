@@ -219,10 +219,10 @@ scene.add(carMeshGroup)
 const rbDesc = RAPIER.RigidBodyDesc.dynamic()
   .setLinearDamping(0.68)
   .setAngularDamping(1.1)
-  .setMass(1350)
+  .setAdditionalMass(1350)
 const dynamicBody = world.createRigidBody(rbDesc)
 dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
-world.createCollider(RAPIER.ColliderDesc.cuboid(1.0, 0.45, 2.2), dynamicBody)
+world.createCollider(RAPIER.ColliderDesc.cuboid(1.0, 0.45, 2.2).setMass(1350), dynamicBody)
 
 // Drivetrain & Transmission System
 const GEAR_RATIOS = [3.82, 2.25, 1.52, 1.15, 0.92, 0.75]
