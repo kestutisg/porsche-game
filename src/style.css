@@ -1,29 +1,496 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Orbitron:wght@500;700;900&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --porsche-red: #d91424;
+  --porsche-gold: #eab308;
+  --porsche-blue: #0284c7;
+  --bg-dark: #070a12;
+  --surface-glass: rgba(13, 19, 33, 0.72);
+  --surface-glass-border: rgba(148, 163, 184, 0.22);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
 html,
 body {
   margin: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0b1220;
-  font-family: Inter, 'Segoe UI', sans-serif;
-}
-
-body {
-  color: #f8fafc;
+  background: var(--bg-dark);
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-primary);
 }
 
 #app {
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
+/* ==========================================================================
+   SHOWROOM 360 STYLING
+   ========================================================================== */
+.showroom-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg-dark);
+}
+
+.showroom-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px 32px;
+  z-index: 20;
+}
+
+.showroom-ui * {
+  pointer-events: auto;
+}
+
+/* Top Header */
+.showroom-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: linear-gradient(180deg, rgba(7, 10, 18, 0.85) 0%, rgba(7, 10, 18, 0) 100%);
+  padding-bottom: 20px;
+}
+
+.brand-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.porsche-crest-badge {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  font-size: 0.95rem;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #e11d48, #be123c);
+  color: white;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(225, 29, 72, 0.45);
+}
+
+.brand-title h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #f1f5f9;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+.era-tabs {
+  display: flex;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-glass-border);
+  backdrop-filter: blur(12px);
+}
+
+.era-tab {
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.era-tab:hover {
+  color: #f8fafc;
+}
+
+.era-tab.active {
+  background: var(--porsche-red);
+  color: white;
+  box-shadow: 0 4px 14px rgba(217, 20, 36, 0.4);
+}
+
+/* Floating Glass Panels (Left Specs & Right Customizer) */
+.showroom-panel {
+  position: absolute;
+  top: 100px;
+  width: min(340px, 90vw);
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-glass-border);
+  border-radius: 20px;
+  padding: 22px 20px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  animation: fadeInPanel 0.4s ease forwards;
+}
+
+@keyframes fadeInPanel {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.showroom-panel.left-panel {
+  left: 32px;
+}
+
+.showroom-panel.right-panel {
+  right: 32px;
+}
+
+.panel-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--porsche-gold);
+  margin-bottom: 6px;
+}
+
+.car-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  color: #ffffff;
+}
+
+.car-tagline {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+
+.specs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.spec-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.spec-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.showroom-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #e2e8f0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.action-btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(148, 163, 184, 0.6);
+  transform: translateY(-1px);
+}
+
+.action-btn.active {
+  border-color: var(--porsche-gold);
+  color: var(--porsche-gold);
+}
+
+.rev-btn {
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.2), rgba(217, 20, 36, 0.4));
+  border-color: rgba(225, 29, 72, 0.5);
+  color: #fecdd3;
+}
+
+.rev-btn:hover {
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.4), rgba(217, 20, 36, 0.6));
+}
+
+/* Customizer on the Right */
+.right-panel h3 {
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--porsche-gold);
+  margin-bottom: 16px;
+  font-weight: 800;
+}
+
+.customizer-section {
+  margin-bottom: 16px;
+}
+
+.customizer-section label {
+  display: block;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.paint-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.paint-chip {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.paint-chip:hover {
+  transform: scale(1.18);
+  border-color: white;
+}
+
+.paint-chip.active {
+  transform: scale(1.24);
+  border-color: white;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
+}
+
+.wheel-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wheel-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wheel-chip:hover {
+  background: rgba(51, 65, 85, 0.7);
+  color: white;
+}
+
+.wheel-chip.active {
+  border-color: var(--porsche-blue);
+  background: rgba(2, 132, 199, 0.2);
+  color: #bae6fd;
+}
+
+.wheel-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.controls-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-top: 10px;
+}
+
+.toggle-pill {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.toggle-pill.active {
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+/* Primary Launch Drive Button */
+.btn-primary-drive {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 0;
+  background: linear-gradient(135deg, #d91424, #ef4444);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(217, 20, 36, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary-drive:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(217, 20, 36, 0.6);
+}
+
+.btn-primary-drive span {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.btn-primary-drive small {
+  font-size: 0.7rem;
+  color: #fecdd3;
+}
+
+/* Bottom Car Carousel Dock */
+.car-selector-dock {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 10px 0;
+  margin-top: auto;
+  scrollbar-width: none;
+}
+
+.car-selector-dock::-webkit-scrollbar {
+  display: none;
+}
+
+.car-card {
+  min-width: 150px;
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-glass-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  backdrop-filter: blur(12px);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.car-card:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-3px);
+}
+
+.car-card.selected {
+  border-color: var(--porsche-red);
+  background: rgba(217, 20, 36, 0.2);
+  box-shadow: 0 8px 24px rgba(217, 20, 36, 0.35);
+  transform: translateY(-4px);
+}
+
+.card-year {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--porsche-gold);
+}
+
+.card-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.card-hp {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+/* ==========================================================================
+   IN-GAME CIRCUIT & RACING HUD
+   ========================================================================== */
 .game-shell {
   position: relative;
   width: 100%;
   height: 100%;
+  display: none;
 }
 
-canvas {
+.game-shell canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -33,18 +500,18 @@ canvas {
   position: absolute;
   top: 20px;
   left: 20px;
-  z-index: 10;
+  z-index: 15;
   pointer-events: none;
 }
 
-.panel {
-  min-width: 280px;
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 14px;
-  padding: 14px 18px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.3);
+.hud-panel {
+  min-width: 290px;
+  background: rgba(10, 15, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  padding: 16px 20px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
 }
 
 .panel-header {
@@ -52,42 +519,46 @@ canvas {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .eyebrow {
   font-size: 0.72rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  opacity: 0.82;
+  color: #7dd3fc;
+  font-weight: 700;
 }
 
 .lap-tag {
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 4px 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(14, 116, 144, 0.24);
-  color: #cffafe;
+  background: rgba(14, 116, 144, 0.35);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #e0f2fe;
 }
 
 .stats {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 0.9rem;
+  gap: 6px;
+  font-size: 0.95rem;
   color: #e2e8f0;
   margin-bottom: 10px;
 }
 
 .stats strong {
-  color: #f8fafc;
-  font-weight: 700;
+  font-family: 'Orbitron', sans-serif;
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 800;
 }
 
 .objective {
-  font-size: 0.92rem;
-  color: #fef3c7;
+  font-size: 0.9rem;
+  color: #fef08a;
   margin-bottom: 8px;
   font-weight: 600;
 }
@@ -95,34 +566,63 @@ canvas {
 .objective.subtle {
   margin-top: 2px;
   margin-bottom: 10px;
-  color: #dbeafe;
-  font-size: 0.8rem;
+  color: #bae6fd;
+  font-size: 0.82rem;
 }
 
 .damage {
   font-size: 0.72rem;
   line-height: 1.5;
-  color: #cbd5e1;
-  opacity: 0.88;
+  color: #94a3b8;
+}
+
+/* In-Game Top Right Controls / Back to Showroom */
+.hud-top-right {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 15;
+  display: flex;
+  gap: 10px;
+}
+
+.hud-btn {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #f1f5f9;
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: all 0.2s ease;
+}
+
+.hud-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: white;
+  transform: translateY(-1px);
 }
 
 #checkpoint-toast {
   position: absolute;
   left: 50%;
-  bottom: 32px;
+  bottom: 40px;
   transform: translateX(-50%) translateY(14px);
-  background: rgba(21, 128, 61, 0.9);
+  background: rgba(16, 185, 129, 0.92);
   color: white;
-  padding: 10px 16px;
+  padding: 12px 24px;
   border-radius: 999px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 800;
   opacity: 0;
-  transition: opacity 0.18s ease, transform 0.18s ease;
-  z-index: 22;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 25;
   pointer-events: none;
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.4);
 }
 
 #checkpoint-toast.visible {
@@ -130,14 +630,15 @@ canvas {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Career Overlay Modal */
 .overlay {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(15, 23, 42, 0.62);
-  backdrop-filter: blur(8px);
-  z-index: 20;
+  background: rgba(7, 10, 18, 0.75);
+  backdrop-filter: blur(12px);
+  z-index: 30;
 }
 
 .overlay.hidden {
@@ -145,58 +646,66 @@ canvas {
 }
 
 .overlay-card {
-  width: min(92vw, 520px);
-  max-height: min(88vh, 760px);
+  width: min(92vw, 560px);
+  max-height: min(88vh, 800px);
   overflow-y: auto;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  border-radius: 20px;
-  padding: 30px 26px;
+  background: rgba(13, 19, 33, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 24px;
+  padding: 34px 30px;
   text-align: center;
-  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.6);
 }
 
 .overlay-tag {
   display: inline-block;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: #7dd3fc;
-  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--porsche-gold);
+  font-size: 0.72rem;
+  font-weight: 800;
   margin-bottom: 12px;
 }
 
 .overlay-card h1 {
-  margin: 0 0 12px;
-  font-size: clamp(2rem, 4vw, 2.8rem);
-  color: #f8fafc;
+  margin: 0 0 10px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+  font-weight: 900;
+  color: #ffffff;
 }
 
 .overlay-card p {
-  margin: 0 0 20px;
-  color: #dbeafe;
+  margin: 0 0 22px;
+  color: #94a3b8;
   line-height: 1.6;
+  font-size: 0.92rem;
 }
 
 .overlay-button {
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: linear-gradient(135deg, #d91424, #f97316);
   color: white;
-  padding: 12px 22px;
-  font-size: 1rem;
-  font-weight: 700;
+  padding: 14px 28px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
   cursor: pointer;
-  box-shadow: 0 16px 24px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 16px 30px rgba(217, 20, 36, 0.4);
+  transition: all 0.2s ease;
 }
 
 .overlay-button:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.1);
+  transform: translateY(-2px);
 }
 
 .career-menu {
   display: grid;
   gap: 10px;
-  margin: 18px 0 16px;
+  margin: 18px 0 20px;
 }
 
 .career-option {
@@ -204,23 +713,25 @@ canvas {
   flex-direction: column;
   align-items: flex-start;
   text-align: left;
-  gap: 3px;
+  gap: 4px;
   width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(30, 41, 59, 0.6);
   color: #e2e8f0;
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 14px;
+  padding: 14px 16px;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .career-option span {
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.95rem;
 }
 
 .career-option small {
-  color: #cbd5e1;
+  color: #94a3b8;
+  font-size: 0.78rem;
 }
 
 .career-option em {
@@ -230,47 +741,43 @@ canvas {
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
 .career-option.selected {
-  border-color: rgba(125, 211, 252, 0.8);
-  background: rgba(14, 116, 144, 0.18);
+  border-color: var(--porsche-red);
+  background: rgba(217, 20, 36, 0.18);
   transform: translateY(-1px);
 }
 
 .career-option.locked {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.career-option:hover:not(.locked) {
-  border-color: rgba(125, 211, 252, 0.7);
-}
-
 .garage-section {
-  margin-top: 12px;
+  margin-top: 14px;
   padding-top: 18px;
-  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  color: #e2e8f0;
+  margin-bottom: 14px;
 }
 
 .section-heading span {
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #93c5fd;
+  color: var(--porsche-gold);
+  font-weight: 800;
 }
 
 .section-heading strong {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: #f8fafc;
 }
 
@@ -279,77 +786,16 @@ canvas {
   gap: 10px;
 }
 
-.garage-section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .garage-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 12px;
-  padding: 12px 12px;
+  padding: 12px 14px;
   text-align: left;
-}
-
-.garage-car {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.7);
-  color: #e2e8f0;
-  border-radius: 10px;
-  padding: 10px 8px;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.garage-car span {
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.garage-car small {
-  color: #cbd5e1;
-  font-size: 0.68rem;
-}
-
-.garage-car.selected {
-  border-color: rgba(125, 211, 252, 0.8);
-  background: rgba(14, 116, 144, 0.2);
-}
-
-.garage-car.unlock {
-  border-color: rgba(34, 197, 94, 0.6);
-  background: rgba(34, 197, 94, 0.08);
-  color: #86efac;
-}
-
-.garage-car.unlock:hover {
-  border-color: rgba(34, 197, 94, 0.9);
-  background: rgba(34, 197, 94, 0.12);
-}
-
-.garage-car.unlock small {
-  color: #86efac;
-  font-weight: 600;
-}
-
-.garage-car.locked {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.garage-car:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .garage-item div {
@@ -363,16 +809,16 @@ canvas {
 }
 
 .garage-item small {
-  color: #cbd5e1;
-  font-size: 0.72rem;
-  line-height: 1.4;
+  color: #94a3b8;
+  font-size: 0.74rem;
 }
 
 .garage-item span {
-  color: #facc15;
+  color: var(--porsche-gold);
   font-size: 0.7rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
 .garage-button {
@@ -380,32 +826,42 @@ canvas {
   border-radius: 999px;
   background: linear-gradient(135deg, #f59e0b, #f97316);
   color: white;
-  font-weight: 700;
-  padding: 9px 12px;
+  font-weight: 800;
+  font-size: 0.8rem;
+  padding: 10px 14px;
   min-width: 96px;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .garage-button:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 
 .repair-button {
   background: linear-gradient(135deg, #22c55e, #16a34a);
 }
 
-@media (max-width: 640px) {
-  .overlay-card {
-    width: min(94vw, 460px);
-    padding: 22px 18px;
+/* ==========================================================================
+   RESPONSIVE BREAKPOINTS
+   ========================================================================== */
+@media (max-width: 980px) {
+  .showroom-panel {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 12px;
   }
 
-  .garage-item {
+  .showroom-ui {
+    padding: 16px;
+    overflow-y: auto;
+    display: block;
+  }
+
+  .showroom-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .garage-button {
-    width: 100%;
   }
 }

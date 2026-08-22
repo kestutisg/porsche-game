@@ -1,16 +1,25 @@
 import './style.css'
 import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier3d-compat'
+import { PorscheShowroom } from './showroom.js'
+import { buildPorsche3DModel, PORSCHE_CATALOG } from './carBuilder.js'
 
 await RAPIER.init()
 
 const app = document.querySelector('#app')
 app.innerHTML = `
-  <div class="game-shell">
+  <div id="showroom-root" class="showroom-container"></div>
+
+  <div id="game-shell" class="game-shell">
+    <div class="hud-top-right">
+      <button id="btn-back-showroom" class="hud-btn" type="button">🏎️ Showroom / Garage</button>
+      <button id="btn-restart-run" class="hud-btn" type="button">🔄 Restart Run</button>
+    </div>
+
     <div class="hud">
-      <div class="panel">
+      <div class="hud-panel">
         <div class="panel-header">
-          <span class="eyebrow">Factory Driver</span>
+          <span class="eyebrow" id="hud-car-name">Factory Driver</span>
           <span id="lap" class="lap-tag">Lap 1</span>
         </div>
         <div class="stats">
@@ -25,17 +34,17 @@ app.innerHTML = `
 
     <div id="checkpoint-toast">Checkpoint clear</div>
 
-    <div id="overlay" class="overlay">
+    <div id="overlay" class="overlay hidden">
       <div class="overlay-card">
         <span class="overlay-tag">Porsche Factory Driver</span>
-        <h1 id="overlay-title">Career Menu</h1>
-        <p id="overlay-subtitle">Select a challenge and prove your skills in the garage.</p>
+        <h1 id="overlay-title">Career Challenge</h1>
+        <p id="overlay-subtitle">Complete the objectives on the test circuit.</p>
 
         <div id="career-menu" class="career-menu"></div>
 
         <div class="garage-section">
           <div class="section-heading">
-            <span>Garage</span>
+            <span>Circuit Garage</span>
             <strong id="bank-balance">Credits: 2800</strong>
           </div>
           <div id="garage-panel" class="garage-panel"></div>
@@ -47,7 +56,9 @@ app.innerHTML = `
   </div>
 `
 
-const shell = app.querySelector('.game-shell')
+const showroomRoot = document.querySelector('#showroom-root')
+const gameShell = document.querySelector('#game-shell')
+
 const speedEl = document.querySelector('#speed')
 const healthEl = document.querySelector('#health')
 const lapEl = document.querySelector('#lap')
@@ -61,77 +72,118 @@ const overlayButtonEl = document.querySelector('#overlay-button')
 const careerMenuEl = document.querySelector('#career-menu')
 const garagePanelEl = document.querySelector('#garage-panel')
 const checkpointToastEl = document.querySelector('#checkpoint-toast')
+const hudCarNameEl = document.querySelector('#hud-car-name')
 
+const btnBackShowroom = document.querySelector('#btn-back-showroom')
+const btnRestartRun = document.querySelector('#btn-restart-run')
+
+// Game Track Scene
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0xb7d6ff)
-scene.fog = new THREE.Fog(0xb7d6ff, 20, 150)
+scene.background = new THREE.Color(0x7ba2cc)
+scene.fog = new THREE.FogExp2(0x7ba2cc, 0.012)
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250)
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300)
 camera.position.set(0, 4, 9)
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
-shell.appendChild(renderer.domElement)
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+gameShell.appendChild(renderer.domElement)
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.2)
+// Lighting for Race Track
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.1)
 scene.add(ambientLight)
 
-const sun = new THREE.DirectionalLight(0xfff5d9, 1.35)
-sun.position.set(10, 18, 8)
+const sun = new THREE.DirectionalLight(0xfff7e6, 1.8)
+sun.position.set(25, 40, 18)
 sun.castShadow = true
-sun.shadow.mapSize.set(1024, 1024)
+sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.camera.near = 0.5
+sun.shadow.camera.far = 150
+sun.shadow.camera.left = -50
+sun.shadow.camera.right = 50
+sun.shadow.camera.top = 50
+sun.shadow.camera.bottom = -50
 scene.add(sun)
 
+// Rapier Physics World
 const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 })
 
+// Ground Plane
 const groundBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed())
 groundBody.setTranslation({ x: 0, y: -0.5, z: 0 }, true)
-world.createCollider(RAPIER.ColliderDesc.cuboid(60, 0.5, 60), groundBody)
+world.createCollider(RAPIER.ColliderDesc.cuboid(100, 0.5, 100), groundBody)
 
+// Track Ground Mesh (Grass & Terrain)
 const groundMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(120, 1, 120),
-  new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.95, metalness: 0.15 })
+  new THREE.PlaneGeometry(250, 250),
+  new THREE.MeshStandardMaterial({ color: 0x334d28, roughness: 0.95, metalness: 0.05 })
 )
-groundMesh.position.y = -1
+groundMesh.rotation.x = -Math.PI / 2
+groundMesh.position.y = -0.05
 groundMesh.receiveShadow = true
 scene.add(groundMesh)
 
+// Asphalt Race Track & Checkpoints
 const trackGroup = new THREE.Group()
 const checkpointPositions = []
 const checkpointTotal = 8
 const checkpointMeshes = []
 
-for (let i = 0; i < 90; i += 1) {
-  const t = (i / 90) * Math.PI * 2
-  const x = Math.cos(t) * 26
-  const z = Math.sin(t) * 18
+// Procedural Circuit Loop
+for (let i = 0; i < 120; i += 1) {
+  const t = (i / 120) * Math.PI * 2
+  const x = Math.cos(t) * 32
+  const z = Math.sin(t) * 22
   const roadSegment = new THREE.Mesh(
-    new THREE.BoxGeometry(6.5, 0.2, 10),
-    new THREE.MeshStandardMaterial({ color: 0x2c3748, roughness: 0.95, metalness: 0.1 })
+    new THREE.BoxGeometry(8.0, 0.2, 8.5),
+    new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.88, metalness: 0.12 })
   )
   roadSegment.position.set(x, 0.08, z)
-  const tangentX = -Math.sin(t) * 26
-  const tangentZ = Math.cos(t) * 18
+  const tangentX = -Math.sin(t) * 32
+  const tangentZ = Math.cos(t) * 22
   roadSegment.rotation.y = Math.atan2(tangentX, tangentZ)
   roadSegment.receiveShadow = true
   trackGroup.add(roadSegment)
+
+  // Curbs / Rumble strips along the edges
+  const curbLeft = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.24, 8.5),
+    new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0xd91424 : 0xf8fafc })
+  )
+  curbLeft.position.set(x - Math.cos(roadSegment.rotation.y) * 4.2, 0.1, z + Math.sin(roadSegment.rotation.y) * 4.2)
+  curbLeft.rotation.y = roadSegment.rotation.y
+  trackGroup.add(curbLeft)
+
+  const curbRight = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.24, 8.5),
+    new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0xd91424 : 0xf8fafc })
+  )
+  curbRight.position.set(x + Math.cos(roadSegment.rotation.y) * 4.2, 0.1, z - Math.sin(roadSegment.rotation.y) * 4.2)
+  curbRight.rotation.y = roadSegment.rotation.y
+  trackGroup.add(curbRight)
 }
 
+// Checkpoint Arches
 for (let i = 0; i < checkpointTotal; i += 1) {
   const t = (i / checkpointTotal) * Math.PI * 2
-  const x = Math.cos(t) * 25.4
-  const z = Math.sin(t) * 17.3
+  const x = Math.cos(t) * 31.5
+  const z = Math.sin(t) * 21.2
   checkpointPositions.push({ x, z })
 
   const gate = new THREE.Mesh(
-    new THREE.BoxGeometry(0.8, 2.2, 0.8),
-    new THREE.MeshStandardMaterial({ color: i === 0 ? 0x22c55e : 0xfbbf24, emissive: 0x0f172a, emissiveIntensity: 0.2 })
+    new THREE.BoxGeometry(1.0, 3.2, 1.0),
+    new THREE.MeshStandardMaterial({
+      color: i === 0 ? 0x22c55e : 0xfacc15,
+      emissive: i === 0 ? 0x15803d : 0xa16207,
+      emissiveIntensity: 0.6,
+    })
   )
-  gate.position.set(x, 1.2, z)
-  gate.rotation.y = Math.atan2(-Math.sin(t) * 25.4, Math.cos(t) * 17.3)
+  gate.position.set(x, 1.6, z)
+  gate.rotation.y = Math.atan2(-Math.sin(t) * 31.5, Math.cos(t) * 21.2)
   gate.userData.flash = 0
   trackGroup.add(gate)
   checkpointMeshes.push(gate)
@@ -139,61 +191,20 @@ for (let i = 0; i < checkpointTotal; i += 1) {
 
 scene.add(trackGroup)
 
-const car = new THREE.Group()
-const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.7, roughness: 0.4 })
-const accentMaterial = new THREE.MeshStandardMaterial({ color: 0xe11d48, metalness: 0.4, roughness: 0.5 })
+// Player Car Container in Race Scene
+let carMeshGroup = new THREE.Group()
+scene.add(carMeshGroup)
 
-const carBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 4.6), bodyMaterial)
-carBody.position.y = 1.05
-carBody.castShadow = true
-carBody.receiveShadow = true
-car.add(carBody)
-
-const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 2.2), accentMaterial)
-cabin.position.set(0, 1.45, -0.2)
-cabin.castShadow = true
-car.add(cabin)
-
-const wheelGeometry = new THREE.CylinderGeometry(0.48, 0.48, 0.5, 18)
-const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 })
-
-const wheelOffsets = [
-  [-1.2, 0.42, 1.45],
-  [1.2, 0.42, 1.45],
-  [-1.2, 0.42, -1.45],
-  [1.2, 0.42, -1.45],
-]
-
-for (const [x, y, z] of wheelOffsets) {
-  const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial)
-  wheel.rotation.z = Math.PI / 2
-  wheel.position.set(x, y, z)
-  wheel.castShadow = true
-  wheel.receiveShadow = true
-  car.add(wheel)
-}
-
-scene.add(car)
-
-const ghostCar = new THREE.Group()
-const ghostBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 4.6), new THREE.MeshStandardMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.3 }))
-ghostBody.position.y = 1.05
-ghostCar.add(ghostBody)
-const ghostCabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 2.2), new THREE.MeshStandardMaterial({ color: 0xfcd34d, transparent: true, opacity: 0.3 }))
-ghostCabin.position.set(0, 1.45, -0.2)
-ghostCar.add(ghostCabin)
-ghostCar.position.set(checkpointPositions[0].x, 1.2, checkpointPositions[0].z)
-ghostCar.visible = false
-scene.add(ghostCar)
-
+// Dynamic Physics Body for Player Car
 const rbDesc = RAPIER.RigidBodyDesc.dynamic()
-  .setLinearDamping(0.75)
-  .setAngularDamping(1.1)
-  .setMass(1400)
+  .setLinearDamping(0.72)
+  .setAngularDamping(1.15)
+  .setMass(1350)
 const dynamicBody = world.createRigidBody(rbDesc)
 dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
-world.createCollider(RAPIER.ColliderDesc.cuboid(1.2, 0.5, 2.3), dynamicBody)
+world.createCollider(RAPIER.ColliderDesc.cuboid(1.0, 0.45, 2.2), dynamicBody)
 
+// User Input Controls
 const controls = {
   forward: false,
   backward: false,
@@ -238,60 +249,55 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
+// Career Challenges
 const careerChallenges = {
   slalom: {
     id: 'slalom',
-    title: 'Slalom Drift',
-    objective: 'Reach 1,200 drift score',
+    title: 'Slalom Drift Test',
+    objective: 'Reach 1,200 drift score around the circuit',
     targetScore: 1200,
     checkpointTotal: 8,
     reward: 900,
-    nextCar: 'turbo',
+    nextCar: 'turbo_930',
   },
   precision: {
     id: 'precision',
-    title: 'Precision Line',
-    objective: 'Clear all checkpoints cleanly',
+    title: 'Precision Homologation Line',
+    objective: 'Clear all 8 checkpoints cleanly under time',
     targetScore: 1000,
     checkpointTotal: 8,
-    reward: 1300,
-    nextCar: 'gt',
+    reward: 1400,
+    nextCar: 'gt2_993',
   },
   street: {
     id: 'street',
-    title: 'Street Showdown',
-    objective: 'Score 1,800 and keep damage below 35%',
+    title: 'Le Mans Prototype Showdown',
+    objective: 'Score 1,800 drift points and keep damage below 35%',
     targetScore: 1800,
     checkpointTotal: 8,
-    reward: 1800,
-    nextCar: null,
+    reward: 2200,
+    nextCar: 'gt1_lemans',
   },
 }
 
-const carCatalog = {
-  carrera: { id: 'carrera', name: 'Carrera RS', color: 0x1f2937, accent: 0xe11d48, price: 0 },
-  turbo: { id: 'turbo', name: 'Turbo S', color: 0x1d4ed8, accent: 0xfbbf24, price: 2200 },
-  gt: { id: 'gt', name: 'GT R', color: 0xef4444, accent: 0xf8fafc, price: 3800 },
-}
-
 const garageUpgrades = {
-  engine: { label: 'Engine Tuning', cost: 450, stepCost: 150, description: '+8% launch and power band' },
-  suspension: { label: 'Suspension Kit', cost: 420, stepCost: 140, description: '+10% grip and drift control' },
-  brakes: { label: 'Brake Upgrade', cost: 390, stepCost: 130, description: '+7% stability under load' },
-  tireCompound: { label: 'Tire Compound', cost: 250, stepCost: 80, description: 'Soft(grip) → Medium → Hard(durability)' },
-  aeroDrag: { label: 'Aero Wing', cost: 300, stepCost: 100, description: 'Level 0-3: Low to High downforce' },
+  engine: { label: 'Engine Tuning', cost: 450, stepCost: 150, description: '+8% launch power & top RPM' },
+  suspension: { label: 'Suspension Kit', cost: 420, stepCost: 140, description: '+10% lateral grip & drift control' },
+  brakes: { label: 'Brake Upgrade', cost: 390, stepCost: 130, description: '+7% braking stability' },
+  tireCompound: { label: 'Tire Compound', cost: 250, stepCost: 80, description: 'Racing Soft Compound for max grip' },
+  aeroDrag: { label: 'Aero Downforce', cost: 300, stepCost: 100, description: 'High downforce spoiler tuning' },
 }
 
 const playerProgress = {
   credits: 2800,
-  selectedCarId: 'carrera',
-  ownedCars: { carrera: true },
-  unlockedCars: { carrera: true },
+  selectedCarId: 'carrera_rs',
+  paintColor: '#f8fafc',
+  wheelColor: '#2563eb',
+  stripeColor: '#2563eb',
+  ownedCars: { porsche_356: true, carrera_rs: true },
   unlockedMissions: { slalom: true },
   completedMissions: {},
-  upgrades: { engine: 0, suspension: 0, brakes: 0, tireCompound: 0, aeroDrag: 0, brakeBias: 50 },
-  leaderboard: {},
-  bestLapTimes: {},
+  upgrades: { engine: 0, suspension: 0, brakes: 0, tireCompound: 0, aeroDrag: 0 },
 }
 
 const carState = {
@@ -300,7 +306,6 @@ const carState = {
   lap: 1,
   lapStartTime: 0,
   lapTime: 0,
-  bestLapTime: null,
   checkpointIndex: 0,
   challengeName: careerChallenges.slalom.title,
   driftScore: 0,
@@ -310,13 +315,10 @@ const carState = {
     suspension: 100,
     frontBumper: 100,
   },
-  lapReplayData: [],
-  isRacingGhost: false,
-  ghostReplayData: null,
-  ghostProgress: 0,
 }
 
 const gameState = {
+  mode: 'showroom', // 'showroom' | 'race'
   started: false,
   finished: false,
   challengeId: 'slalom',
@@ -324,23 +326,22 @@ const gameState = {
   audioReady: false,
   audioCtx: null,
   engineOsc: null,
+  engineOsc2: null,
   engineGain: null,
   engineFilter: null,
   challengeResult: null,
-  overlayMode: 'career',
-  showLeaderboard: false,
 }
 
-const maxSpeed = 28
-const engineForce = 58
-const steeringRate = 0.045
-const drag = 0.92
+const maxSpeed = 30
+const engineForce = 62
+const steeringRate = 0.048
+const drag = 0.93
 
 function getCareerRanking() {
   const missionCount = Object.keys(playerProgress.completedMissions).length
-  if (missionCount === 0) return { tier: 'Rookie', level: 1 }
-  if (missionCount === 1) return { tier: 'Pro', level: 2 }
-  return { tier: 'Legend', level: 3 }
+  if (missionCount === 0) return { tier: 'Factory Rookie', level: 1 }
+  if (missionCount === 1) return { tier: 'Official Test Driver', level: 2 }
+  return { tier: 'Porsche Works Legend', level: 3 }
 }
 
 function formatTime(seconds) {
@@ -355,14 +356,9 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
 }
 
-function getCurrentCarConfig() {
-  return carCatalog[playerProgress.selectedCarId] || carCatalog.carrera
-}
-
-function applyCarAppearance() {
-  const config = getCurrentCarConfig()
-  carBody.material.color.setHex(config.color)
-  cabin.material.color.setHex(config.accent)
+function computeOverallHealth() {
+  const total = Object.values(carState.components).reduce((sum, value) => sum + value, 0)
+  return total / Object.keys(carState.components).length
 }
 
 function getUpgradeLevel(key) {
@@ -374,80 +370,22 @@ function getUpgradeCost(key) {
   return upgrade.cost + getUpgradeLevel(key) * upgrade.stepCost
 }
 
-function computeOverallHealth() {
-  const total = Object.values(carState.components).reduce((sum, value) => sum + value, 0)
-  return total / Object.keys(carState.components).length
-}
+function spawnPlayerCarModel() {
+  // Remove existing model
+  while (carMeshGroup.children.length > 0) {
+    carMeshGroup.remove(carMeshGroup.children[0])
+  }
 
-function recordLapFrame() {
-  const translation = dynamicBody.translation()
-  carState.lapReplayData.push({
-    x: translation.x,
-    y: translation.y,
-    z: translation.z,
-    heading: carState.heading,
-    speed: Math.hypot(dynamicBody.linvel().x, dynamicBody.linvel().z),
+  const model = buildPorsche3DModel(playerProgress.selectedCarId, {
+    paintColor: playerProgress.paintColor,
+    wheelColor: playerProgress.wheelColor,
+    stripeColor: playerProgress.stripeColor,
   })
-}
+  carMeshGroup.add(model)
+  model.userData.toggleHeadlights(true)
 
-function saveLapToLeaderboard() {
-  const leaderboardKey = `${gameState.challengeId}_${playerProgress.selectedCarId}`
-  const bestTime = playerProgress.bestLapTimes[leaderboardKey] || Infinity
-  
-  if (carState.lapTime < bestTime) {
-    playerProgress.bestLapTimes[leaderboardKey] = carState.lapTime
-    playerProgress.leaderboard[leaderboardKey] = {
-      time: carState.lapTime,
-      lapData: carState.lapReplayData.slice(),
-      lapCount: carState.lap,
-      driftScore: carState.driftScore,
-      timestamp: Date.now(),
-    }
-    return true
-  }
-  return false
-}
-
-function getLeaderboardEntry() {
-  const key = `${gameState.challengeId}_${playerProgress.selectedCarId}`
-  return playerProgress.leaderboard[key]
-}
-
-function updateGhostCar() {
-  if (!carState.isRacingGhost || !carState.ghostReplayData) return
-  
-  const frameCount = carState.ghostReplayData.lapData.length
-  if (frameCount === 0) return
-  
-  carState.ghostProgress += 0.016 / (carState.ghostReplayData.time || 60)
-  if (carState.ghostProgress >= 1) {
-    carState.isRacingGhost = false
-    ghostCar.visible = false
-    return
-  }
-  
-  const frameIndex = Math.floor(carState.ghostProgress * frameCount)
-  const frame = carState.ghostReplayData.lapData[frameIndex]
-  
-  if (frame) {
-    ghostCar.position.set(frame.x, frame.y, frame.z)
-    ghostCar.rotation.y = frame.heading
-    ghostCar.visible = true
-  }
-}
-
-function getTireGripFactor() {
-  const tireLevel = getUpgradeLevel('tireCompound')
-  const tireGrip = [1.0, 1.12, 1.05, 0.85]
-  const tireWear = [1.0, 0.6, 1.0, 1.4]
-  return { grip: tireGrip[Math.min(tireLevel, 3)], wear: tireWear[Math.min(tireLevel, 3)] }
-}
-
-function getAeroFactor() {
-  const aeroLevel = getUpgradeLevel('aeroDrag')
-  const dragModifier = [1.0, 1.05, 1.15, 1.3]
-  const downforceBonus = [0, 0.05, 0.12, 0.25]
-  return { drag: dragModifier[Math.min(aeroLevel, 3)], grip: downforceBonus[Math.min(aeroLevel, 3)] }
+  const config = PORSCHE_CATALOG[playerProgress.selectedCarId]
+  hudCarNameEl.textContent = config ? config.name : 'Porsche'
 }
 
 function refreshHud() {
@@ -520,54 +458,21 @@ function renderGaragePanel() {
     `
   }).join('')
 
-  const carList = Object.entries(carCatalog).map(([key, carInfo]) => {
-    const owned = Boolean(playerProgress.ownedCars[key])
-    const unlocked = Boolean(playerProgress.unlockedCars[key])
-    const selected = key === playerProgress.selectedCarId
-    const price = carInfo.price
-
-    if (owned) {
-      return `
-        <button type="button" class="garage-car ${selected ? 'selected' : ''}" data-car="${key}">
-          <span>${carInfo.name}</span>
-          <small>${selected ? 'Selected' : 'Owned'}</small>
-        </button>
-      `
-    } else if (unlocked) {
-      return `
-        <button type="button" class="garage-car unlock" data-car-buy="${key}">
-          <span>${carInfo.name}</span>
-          <small>$${price}</small>
-        </button>
-      `
-    } else {
-      return `
-        <button type="button" class="garage-car locked" disabled>
-          <span>${carInfo.name}</span>
-          <small>Locked</small>
-        </button>
-      `
-    }
-  }).join('')
-
   const repairCost = Math.round(220 + (100 - computeOverallHealth()) * 9)
   garagePanelEl.innerHTML = `
     <div class="garage-item">
       <div>
-        <strong>Garage Repair</strong>
-        <small>Repair worn components and get back to full health.</small>
-        <span>Est. $${repairCost}</span>
+        <strong>Factory Overhaul & Repair</strong>
+        <small>Restore engine compression, suspension alignment & bumper.</small>
+        <span>Cost: $${repairCost}</span>
       </div>
       <button type="button" class="garage-button repair-button" data-repair="repair">Repair $${repairCost}</button>
-    </div>
-    <div class="garage-section-grid">
-      ${carList}
     </div>
     ${list}
   `
 
   const bankBalanceEl = document.querySelector('#bank-balance')
-  bankBalanceEl.textContent = `Credits: ${playerProgress.credits}`
+  bankBalanceEl.textContent = `Credits: $${playerProgress.credits}`
 }
 
 function resetChallengeState() {
@@ -587,11 +492,12 @@ function resetChallengeState() {
   carState.components.transmission = 100
   carState.components.suspension = 100
   carState.components.frontBumper = 100
+
   dynamicBody.setLinvel({ x: 0, y: 0, z: 0 }, true)
   dynamicBody.setTranslation({ x: checkpointPositions[0].x, y: 1.2, z: checkpointPositions[0].z }, true)
 
   checkpointMeshes.forEach((mesh) => {
-    mesh.material.emissiveIntensity = 0.2
+    mesh.material.emissiveIntensity = 0.6
     mesh.scale.set(1, 1, 1)
     mesh.userData.flash = 0
   })
@@ -604,32 +510,34 @@ function setupAudio() {
   if (!AudioCtor) return
 
   const ctx = new AudioCtor()
-  const oscillator = ctx.createOscillator()
+  const osc1 = ctx.createOscillator()
+  const osc2 = ctx.createOscillator()
   const filter = ctx.createBiquadFilter()
   const gain = ctx.createGain()
 
-  oscillator.type = 'sawtooth'
-  oscillator.frequency.value = 60
+  osc1.type = 'sawtooth'
+  osc2.type = 'triangle'
+  osc1.frequency.value = 55
+  osc2.frequency.value = 110
+
   filter.type = 'lowpass'
-  filter.frequency.value = 500
+  filter.frequency.value = 550
   gain.gain.value = 0.0001
 
-  oscillator.connect(filter)
+  osc1.connect(filter)
+  osc2.connect(filter)
   filter.connect(gain)
   gain.connect(ctx.destination)
-  oscillator.start()
+
+  osc1.start()
+  osc2.start()
 
   gameState.audioCtx = ctx
-  gameState.engineOsc = oscillator
+  gameState.engineOsc = osc1
+  gameState.engineOsc2 = osc2
   gameState.engineGain = gain
   gameState.engineFilter = filter
   gameState.audioReady = true
-}
-
-function getNextMission() {
-  const ordered = ['slalom', 'precision', 'street']
-  const index = ordered.indexOf(gameState.challengeId)
-  return ordered[index + 1] || null
 }
 
 function completeMission() {
@@ -638,23 +546,11 @@ function completeMission() {
   playerProgress.credits += missionReward
   playerProgress.completedMissions[gameState.challengeId] = true
 
-  const nextMission = getNextMission()
-  if (nextMission) {
-    playerProgress.unlockedMissions[nextMission] = true
-    if (selectedChallenge.nextCar) {
-      playerProgress.unlockedCars[selectedChallenge.nextCar] = true
-    }
-  }
-
+  const ranking = getCareerRanking()
   renderCareerMenu()
   renderGaragePanel()
 
-  const ranking = getCareerRanking()
-  const summary = nextMission
-    ? `Mission cleared! You are now ${ranking.tier}. +$${missionReward} credited.`
-    : `Mission cleared! Final rank: ${ranking.tier}. You earned $${missionReward}.`
-
-  showOverlay('Challenge Complete', summary, nextMission ? 'Continue to Next Mission' : 'Back to Garage')
+  showOverlay('Test Complete', `Mission cleared! You are now ${ranking.tier}. +$${missionReward} awarded.`, 'Continue to Career Menu')
   gameState.finished = true
   gameState.started = false
   gameState.challengeResult = 'complete'
@@ -669,7 +565,6 @@ async function startChallenge() {
   if (!gameState.audioReady) {
     setupAudio()
   }
-
   if (gameState.audioCtx && gameState.audioCtx.state === 'suspended') {
     await gameState.audioCtx.resume()
   }
@@ -681,36 +576,46 @@ async function startChallenge() {
   refreshHud()
 }
 
-function triggerRepair() {
-  const repairCost = Math.round(220 + (100 - computeOverallHealth()) * 9)
-  if (playerProgress.credits < repairCost) {
-    showToast('Not enough credits for repair.')
-    return
-  }
+// Handlers for switching modes
+function enterRaceMode(carOptions) {
+  playerProgress.selectedCarId = carOptions.carId
+  playerProgress.paintColor = carOptions.paintColor
+  playerProgress.wheelColor = carOptions.wheelColor
+  playerProgress.stripeColor = carOptions.stripeColor
 
-  playerProgress.credits -= repairCost
-  carState.components.engine = 100
-  carState.components.transmission = 100
-  carState.components.suspension = 100
-  carState.components.frontBumper = 100
+  showroom.hide()
+  gameShell.style.display = 'block'
+  gameState.mode = 'race'
+
+  spawnPlayerCarModel()
+  resetChallengeState()
+  renderCareerMenu()
   renderGaragePanel()
   refreshHud()
-  showToast('Your Porsche is back in the garage.')
+  startChallenge()
 }
 
-function applyGarageUpgrade(key) {
-  const upgrade = garageUpgrades[key]
-  const cost = getUpgradeCost(key)
-  if (playerProgress.credits < cost) {
-    showToast(`Not enough credits for ${upgrade.label}.`)
-    return
+function enterShowroomMode() {
+  gameState.mode = 'showroom'
+  gameState.started = false
+  if (gameState.engineGain) {
+    gameState.engineGain.gain.value = 0.0001
   }
 
-  playerProgress.credits -= cost
-  playerProgress.upgrades[key] += 1
-  renderGaragePanel()
-  showToast(`${upgrade.label} installed.`)
+  gameShell.style.display = 'none'
+  showroom.show()
+  showroom.loadCar(playerProgress.selectedCarId)
 }
+
+btnBackShowroom.addEventListener('click', () => {
+  enterShowroomMode()
+})
+
+btnRestartRun.addEventListener('click', () => {
+  resetChallengeState()
+  refreshHud()
+  showToast('Run restarted')
+})
 
 careerMenuEl.addEventListener('click', (event) => {
   const button = event.target.closest('.career-option')
@@ -724,68 +629,45 @@ careerMenuEl.addEventListener('click', (event) => {
 
   gameState.challengeId = id
   renderCareerMenu()
-
-  const selectedChallenge = careerChallenges[id]
-  if (selectedChallenge) {
-    overlayTitleEl.textContent = selectedChallenge.title
-    overlaySubtitleEl.textContent = selectedChallenge.objective
-  }
 })
 
 garagePanelEl.addEventListener('click', (event) => {
   const repairButton = event.target.closest('[data-repair]')
   if (repairButton) {
-    triggerRepair()
-    return
-  }
-
-  const carBuyButton = event.target.closest('[data-car-buy]')
-  if (carBuyButton) {
-    const carId = carBuyButton.dataset.carBuy
-    const carInfo = carCatalog[carId]
-    if (playerProgress.credits < carInfo.price) {
-      showToast(`Need $${carInfo.price - playerProgress.credits} more for ${carInfo.name}.`)
+    const repairCost = Math.round(220 + (100 - computeOverallHealth()) * 9)
+    if (playerProgress.credits < repairCost) {
+      showToast('Not enough credits for repair.')
       return
     }
-    playerProgress.credits -= carInfo.price
-    playerProgress.ownedCars[carId] = true
-    playerProgress.selectedCarId = carId
-    applyCarAppearance()
+    playerProgress.credits -= repairCost
+    carState.components.engine = 100
+    carState.components.transmission = 100
+    carState.components.suspension = 100
+    carState.components.frontBumper = 100
     renderGaragePanel()
-    showToast(`${carInfo.name} purchased and selected!`)
-    return
-  }
-
-  const carButton = event.target.closest('[data-car]')
-  if (carButton) {
-    const carId = carButton.dataset.car
-    playerProgress.selectedCarId = carId
-    applyCarAppearance()
-    renderGaragePanel()
-    showToast(`${carCatalog[carId].name} selected.`)
+    refreshHud()
+    showToast('Porsche restored to factory condition.')
     return
   }
 
   const upgradeButton = event.target.closest('[data-upgrade]')
   if (!upgradeButton) return
 
-  applyGarageUpgrade(upgradeButton.dataset.upgrade)
+  const key = upgradeButton.dataset.upgrade
+  const upgrade = garageUpgrades[key]
+  const cost = getUpgradeCost(key)
+  if (playerProgress.credits < cost) {
+    showToast(`Not enough credits for ${upgrade.label}.`)
+    return
+  }
+
+  playerProgress.credits -= cost
+  playerProgress.upgrades[key] += 1
+  renderGaragePanel()
+  showToast(`${upgrade.label} installed.`)
 })
 
 overlayButtonEl.addEventListener('click', () => {
-  if (gameState.challengeResult === 'complete') {
-    const nextMission = getNextMission()
-    if (nextMission) {
-      gameState.challengeId = nextMission
-      renderCareerMenu()
-    }
-    gameState.challengeResult = null
-  }
-
-  if (gameState.challengeResult === 'failed') {
-    gameState.challengeResult = null
-  }
-
   startChallenge()
 })
 
@@ -794,10 +676,10 @@ function triggerCheckpointSuccess(index) {
   if (!mesh) return
 
   mesh.material.emissive.setHex(0x22c55e)
-  mesh.material.emissiveIntensity = 1.25
+  mesh.material.emissiveIntensity = 1.5
   mesh.userData.flash = 1
-  mesh.scale.set(1.3, 1.3, 1.3)
-  showToast(`Checkpoint ${index + 1} clear`)
+  mesh.scale.set(1.2, 1.2, 1.2)
+  showToast(`Checkpoint ${index + 1} Cleared!`)
 }
 
 function handleCheckpointProgress() {
@@ -805,7 +687,7 @@ function handleCheckpointProgress() {
   const target = checkpointPositions[carState.checkpointIndex]
   const distance = Math.hypot(translation.x - target.x, translation.z - target.z)
 
-  if (distance < 5) {
+  if (distance < 5.5) {
     triggerCheckpointSuccess(carState.checkpointIndex)
     carState.checkpointIndex += 1
 
@@ -836,8 +718,7 @@ function updateCar() {
   if (!gameState.started || gameState.finished) return
 
   if (carState.lapStartTime > 0) {
-    carState.lapTime = (performance.now() / 1000) - carState.lapStartTime
-    recordLapFrame()
+    carState.lapTime = performance.now() / 1000 - carState.lapStartTime
   }
 
   const velocity = dynamicBody.linvel()
@@ -846,13 +727,9 @@ function updateCar() {
   const steering = (controls.right ? 1 : 0) - (controls.left ? 1 : 0)
   const handbrake = controls.handbrake ? 1 : 0
 
-  const tireFactors = getTireGripFactor()
-  const aeroFactors = getAeroFactor()
-  
-  const engineFactor = 0.4 + carState.components.engine / 100 * 0.8 + getUpgradeLevel('engine') * 0.08
-  const transmissionFactor = 0.5 + carState.components.transmission / 100 * 0.7 + getUpgradeLevel('brakes') * 0.05
-  const suspensionFactor = (0.55 + carState.components.suspension / 100 * 0.65 + getUpgradeLevel('suspension') * 0.1) * tireFactors.grip
-  const effectiveMaxSpeed = maxSpeed * transmissionFactor * (1 - aeroFactors.drag * 0.05)
+  const engineFactor = 0.5 + (carState.components.engine / 100) * 0.7 + getUpgradeLevel('engine') * 0.08
+  const suspensionFactor = 0.6 + (carState.components.suspension / 100) * 0.6 + getUpgradeLevel('suspension') * 0.1
+  const effectiveMaxSpeed = maxSpeed * engineFactor
 
   const forwardX = Math.sin(carState.heading)
   const forwardZ = Math.cos(carState.heading)
@@ -861,10 +738,11 @@ function updateCar() {
 
   const lateralSpeed = velocity.x * rightX + velocity.z * rightZ
 
-  const driftIntent = clamp(Math.abs(steering) * (speed / 10) + handbrake * 0.7, 0, 1)
-  const gripTarget = THREE.MathUtils.lerp(0.92, 0.42, driftIntent)
+  // Iconic Rear-Engine Pendulum Physics & Drift Handling
+  const driftIntent = clamp(Math.abs(steering) * (speed / 9) + handbrake * 0.8, 0, 1)
+  const gripTarget = THREE.MathUtils.lerp(0.94, 0.44, driftIntent)
   const grip = gripTarget * suspensionFactor
-  const lateralCorrection = lateralSpeed * (1 - grip) * 0.18
+  const lateralCorrection = lateralSpeed * (1 - grip) * 0.2
   const nextVelocity = {
     x: velocity.x - rightX * lateralCorrection,
     y: velocity.y,
@@ -875,16 +753,16 @@ function updateCar() {
   const goalHit = carState.driftScore >= selectedChallenge.targetScore
   if (!gameState.objectiveComplete && goalHit) {
     gameState.objectiveComplete = true
-    carState.challengeName = `${selectedChallenge.title} • Objective complete`
+    carState.challengeName = `${selectedChallenge.title} • Objective Complete!`
   }
 
   if (throttle !== 0) {
-    const force = throttle * engineForce * engineFactor * (1 - speed / (effectiveMaxSpeed + 12))
+    const force = throttle * engineForce * engineFactor * (1 - speed / (effectiveMaxSpeed + 14))
     nextVelocity.x += forwardX * force
     nextVelocity.z += forwardZ * force
 
-    if (speed > 20) {
-      carState.components.engine = clamp(carState.components.engine - 0.04, 0, 100)
+    if (speed > 22) {
+      carState.components.engine = clamp(carState.components.engine - 0.03, 0, 100)
     }
   } else {
     nextVelocity.x *= drag
@@ -892,10 +770,8 @@ function updateCar() {
   }
 
   if (Math.abs(steering) > 0 && speed > 1) {
-    const steeringBias = Math.max(0, (0.55 - suspensionFactor) * 0.2)
-    const effectiveSteer = steering * (1 - steeringBias)
-    const turnStrength = effectiveSteer * steeringRate * (0.35 + Math.min(speed / effectiveMaxSpeed, 1))
-    carState.heading += turnStrength * (1 + handbrake * 0.6)
+    const turnStrength = steering * steeringRate * (0.35 + Math.min(speed / effectiveMaxSpeed, 1))
+    carState.heading += turnStrength * (1 + handbrake * 0.65)
   }
 
   if (speed > effectiveMaxSpeed) {
@@ -904,64 +780,32 @@ function updateCar() {
     nextVelocity.z *= clampRatio
   }
 
-  if (handbrake && speed > 8 && Math.abs(steering) > 0.1) {
-    const driftPower = Math.abs(lateralSpeed) * 0.14 + speed * 0.04 + handbrake * 12
-    carState.driftScore += driftPower * 0.12
-    nextVelocity.x += rightX * steering * 14 * handbrake
-    nextVelocity.z += rightZ * steering * 14 * handbrake
-  }
-
-  if (speed > 12 && Math.abs(steering) > 0.3 && Math.abs(lateralSpeed) > 2) {
-    const wear = (Math.abs(lateralSpeed) * 0.012) + (Math.abs(steering) * 0.008)
-    carState.components.suspension = clamp(carState.components.suspension - wear, 0, 100)
-    carState.components.frontBumper = clamp(carState.components.frontBumper - wear * 0.7, 0, 100)
-  }
-
-  if (throttle !== 0 && speed > 18) {
-    carState.components.transmission = clamp(carState.components.transmission - 0.025, 0, 100)
-  }
-
-  if (carState.components.suspension < 50 && speed > 8) {
-    const driftBias = (50 - carState.components.suspension) / 50
-    carState.heading += steering * driftBias * 0.015
-  }
-
-  if (carState.components.engine < 60) {
-    const enginePenalty = (60 - carState.components.engine) / 60
-    nextVelocity.x *= 1 - enginePenalty * 0.2
-    nextVelocity.z *= 1 - enginePenalty * 0.2
+  if (handbrake && speed > 7 && Math.abs(steering) > 0.1) {
+    const driftPower = Math.abs(lateralSpeed) * 0.16 + speed * 0.05 + handbrake * 14
+    carState.driftScore += driftPower * 0.14
+    nextVelocity.x += rightX * steering * 16 * handbrake
+    nextVelocity.z += rightZ * steering * 16 * handbrake
   }
 
   dynamicBody.setLinvel({ x: nextVelocity.x, y: velocity.y, z: nextVelocity.z }, true)
 
   const translation = dynamicBody.translation()
-  car.position.set(translation.x, translation.y, translation.z)
-  car.rotation.y = carState.heading
-  car.rotation.z = THREE.MathUtils.clamp(lateralSpeed * 0.1 + steering * handbrake * 0.18, -0.28, 0.28)
+  carMeshGroup.position.set(translation.x, translation.y, translation.z)
+  carMeshGroup.rotation.y = carState.heading
+  carMeshGroup.rotation.z = THREE.MathUtils.clamp(lateralSpeed * 0.08 + steering * handbrake * 0.15, -0.25, 0.25)
 
-  const speedKmh = Math.round(Math.min(speed * 4.6, 999))
+  const speedKmh = Math.round(Math.min(speed * 4.8, 999))
   speedEl.textContent = String(speedKmh)
-
-  if (gameState.challengeId === 'street' && computeOverallHealth() < 35) {
-    gameState.finished = true
-    gameState.started = false
-    gameState.challengeResult = 'failed'
-    showOverlay(
-      'Garage Verdict',
-      `Damage is too high for this build. Keep the car under 35% and try again.`,
-      'Retry Challenge'
-    )
-  }
 
   refreshHud()
   handleCheckpointProgress()
 }
 
 function updateCamera() {
-  const carPosition = car.position.clone()
-  const offset = new THREE.Vector3(0, 2.8, -7.5).applyAxisAngle(new THREE.Vector3(0, 1, 0), carState.heading)
+  const carPosition = carMeshGroup.position.clone()
+  const offset = new THREE.Vector3(0, 3.2, -8.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), carState.heading)
   const desiredPosition = carPosition.clone().add(offset)
-  camera.position.lerp(desiredPosition, 0.08)
+  camera.position.lerp(desiredPosition, 0.1)
 
   const lookTarget = carPosition.clone().add(new THREE.Vector3(0, 1.2, 0))
   camera.lookAt(lookTarget)
@@ -970,21 +814,25 @@ function updateCamera() {
 const clock = new THREE.Clock()
 
 function updateAudio() {
-  if (!gameState.audioReady || !gameState.engineOsc) {
-    return
-  }
+  if (!gameState.audioReady || !gameState.engineOsc) return
 
   const velocity = dynamicBody.linvel()
   const speed = Math.hypot(velocity.x, velocity.z)
   const throttle = (controls.forward ? 1 : 0) - (controls.backward ? 1 : 0)
   const handbrake = controls.handbrake ? 1 : 0
 
-  const targetFrequency = 52 + speed * 7 + throttle * 18 + handbrake * 18
-  const targetGain = 0.02 + Math.abs(throttle) * 0.12 + (speed / 25) * 0.08 + handbrake * 0.03
+  const carConfig = PORSCHE_CATALOG[playerProgress.selectedCarId]
+  const profile = carConfig?.audioProfile || { basePitch: 55, revMulti: 7.0 }
 
-  gameState.engineOsc.frequency.setTargetAtTime(targetFrequency, gameState.audioCtx.currentTime, 0.08)
-  gameState.engineFilter.frequency.setTargetAtTime(240 + speed * 20 + handbrake * 140, gameState.audioCtx.currentTime, 0.08)
-  gameState.engineGain.gain.setTargetAtTime(gameState.started ? targetGain : 0.0001, gameState.audioCtx.currentTime, 0.08)
+  const targetFrequency = profile.basePitch + speed * profile.revMulti + Math.abs(throttle) * 22 + handbrake * 20
+  const targetGain = 0.03 + Math.abs(throttle) * 0.14 + (speed / 28) * 0.08 + handbrake * 0.04
+
+  gameState.engineOsc.frequency.setTargetAtTime(targetFrequency, gameState.audioCtx.currentTime, 0.06)
+  if (gameState.engineOsc2) {
+    gameState.engineOsc2.frequency.setTargetAtTime(targetFrequency * 1.5, gameState.audioCtx.currentTime, 0.06)
+  }
+  gameState.engineFilter.frequency.setTargetAtTime(300 + speed * 26 + handbrake * 180, gameState.audioCtx.currentTime, 0.06)
+  gameState.engineGain.gain.setTargetAtTime(gameState.started ? targetGain : 0.0001, gameState.audioCtx.currentTime, 0.06)
 }
 
 function animateCheckpointEffects(delta) {
@@ -992,31 +840,36 @@ function animateCheckpointEffects(delta) {
     if (!mesh || !mesh.userData.flash) return
 
     mesh.userData.flash = Math.max(0, mesh.userData.flash - delta * 1.8)
-    const pulse = 1 + (1 - mesh.userData.flash) * 0.7
+    const pulse = 1 + (1 - mesh.userData.flash) * 0.4
     mesh.scale.setScalar(pulse)
 
     if (mesh.userData.flash <= 0) {
-      mesh.material.emissiveIntensity = 0.3
+      mesh.material.emissiveIntensity = 0.6
       mesh.scale.setScalar(1)
       mesh.userData.flash = 0
     }
   })
 }
 
-function animate() {
-  const delta = Math.min(clock.getDelta(), 0.033)
-  world.step()
-  updateCar()
-  updateAudio()
-  updateCamera()
-  animateCheckpointEffects(delta)
-  renderer.render(scene, camera)
-  requestAnimationFrame(animate)
+function gameLoop() {
+  if (gameState.mode === 'race') {
+    const delta = Math.min(clock.getDelta(), 0.033)
+    world.step()
+    updateCar()
+    updateAudio()
+    updateCamera()
+    animateCheckpointEffects(delta)
+    renderer.render(scene, camera)
+  }
+  requestAnimationFrame(gameLoop)
 }
 
-applyCarAppearance()
-renderCareerMenu()
-renderGaragePanel()
-refreshHud()
-showOverlay('Career Menu', 'Select a challenge and prove your skills in the garage.', 'Start Challenge')
-animate()
+// Initialize Showroom
+const showroom = new PorscheShowroom(showroomRoot, (carOptions) => {
+  enterRaceMode(carOptions)
+})
+showroom.show()
+
+// Start in Showroom mode
+enterShowroomMode()
+gameLoop()
